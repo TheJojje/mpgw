@@ -1,0 +1,105 @@
+{% extends "layout.twig" %}
+{% block content %}
+<h1>Översikt</h1>
+<p class="muted" style="margin:-2px 0 20px;">Läget just nu över dina applikationer, mail och larm.</p>
+
+<div class="cards">
+    <a class="card" href="/admin/applications">
+        <div class="card-icon"><svg class="ic"><use href="#ic-grid"></use></svg></div>
+        <span class="card-label">Registrerade applikationer</span>
+        <span class="card-number tabular">{{ applications_count }}</span>
+        <span class="card-hint">Visa alla <svg class="ic" style="width:12px;height:12px;"><use href="#ic-arrow-right"></use></svg></span>
+    </a>
+    <a class="card" href="/admin/emails">
+        <div class="card-icon"><svg class="ic"><use href="#ic-mail"></use></svg></div>
+        <span class="card-label">Mail senaste 24h</span>
+        <span class="card-number tabular">{{ recent_emails_count }}</span>
+        <span class="card-hint">Visa historik <svg class="ic" style="width:12px;height:12px;"><use href="#ic-arrow-right"></use></svg></span>
+    </a>
+    <a class="card {% if open_alerts_count > 0 %}card-alert{% endif %}" href="/admin/alerts{{ open_alerts_count > 0 ? '?status=open' : '' }}">
+        <div class="card-icon"><svg class="ic"><use href="#ic-alert"></use></svg></div>
+        <span class="card-label">Öppna larm</span>
+        <span class="card-number tabular">{{ open_alerts_count }}</span>
+        <span class="card-hint">{{ open_alerts_count > 0 ? 'Åtgärda nu' : 'Visa larm' }} <svg class="ic" style="width:12px;height:12px;"><use href="#ic-arrow-right"></use></svg></span>
+    </a>
+</div>
+
+<div class="dash-grid">
+    <div class="panel">
+        <div class="widget-header">
+            <h2>Senaste mail</h2>
+            <a class="btn-link" href="/admin/emails">Visa alla <svg class="ic" style="width:12px;height:12px;"><use href="#ic-chevron-right"></use></svg></a>
+        </div>
+        {% if recent_emails|length > 0 %}
+            <div class="widget-list">
+            {% for email in recent_emails %}
+                {% set variant = email.match_status == 'success' ? 'ok' : (email.match_status == 'partial' ? 'warn' : 'danger') %}
+                <a class="widget-row" href="/admin/emails/{{ email.uuid }}">
+                    <div class="w-icon" style="background:var(--{{ variant == 'ok' ? 'success' : (variant == 'warn' ? 'warning' : 'danger') }}-tint); color:var(--{{ variant == 'ok' ? 'success' : (variant == 'warn' ? 'warning' : 'danger') }});">
+                        <svg class="ic"><use href="#ic-mail"></use></svg>
+                    </div>
+                    <div class="w-body">
+                        <div class="w-title">{{ email.subject|default('(inget ämne)') }}</div>
+                        <div class="w-sub">{{ email.from_address }} · {{ email.fetched_at }}</div>
+                    </div>
+                    <svg class="ic w-chevron"><use href="#ic-chevron-right"></use></svg>
+                </a>
+            {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <div class="empty-icon"><svg class="ic-lg"><use href="#ic-inbox-empty"></use></svg></div>
+                <h3>Inga mail hämtade än</h3>
+                <p>Kontrollera att minst en mailbox är konfigurerad och aktiv.</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="panel">
+        <div class="widget-header">
+            <h2>Behöver uppmärksamhet</h2>
+            <a class="btn-link" href="/admin/alerts">Alla larm <svg class="ic" style="width:12px;height:12px;"><use href="#ic-chevron-right"></use></svg></a>
+        </div>
+        {% if attention_applications|length > 0 %}
+            <div class="widget-list">
+            {% for item in attention_applications %}
+                <a class="widget-row" href="/admin/applications/{{ item.id }}">
+                    <div class="w-icon danger"><svg class="ic"><use href="#ic-alert"></use></svg></div>
+                    <div class="w-body">
+                        <div class="w-title">{{ item.name }}</div>
+                        <div class="w-sub">{{ item.reason }}</div>
+                    </div>
+                    <svg class="ic w-chevron"><use href="#ic-chevron-right"></use></svg>
+                </a>
+            {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state positive">
+                <div class="empty-icon"><svg class="ic-lg"><use href="#ic-check-circle"></use></svg></div>
+                <h3>Allt fungerar</h3>
+                <p>Inga applikationer har öppna larm eller mailboxar som inte går att nå.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if recent_alerts|length > 0 %}
+<h2>Senaste larm</h2>
+<div class="table-wrap">
+    <table class="table">
+        <thead><tr><th>Typ</th><th>Allvarlighet</th><th>Applikation</th><th>Status</th><th>Skapat</th></tr></thead>
+        <tbody>
+        {% for alert in recent_alerts %}
+            <tr>
+                <td>{{ alert.type }}</td>
+                <td>{{ status_chip(alert.severity == 'critical' ? 'danger' : (alert.severity == 'warning' ? 'warn' : 'neutral'), alert.severity == 'critical' ? 'Kritisk' : (alert.severity == 'warning' ? 'Varning' : 'Info')) }}</td>
+                <td>{% if alert.application_id %}<a class="btn-link" style="padding:0;" href="/admin/applications/{{ alert.application_id }}">{{ alert.application_name|default('—') }}</a>{% else %}—{% endif %}</td>
+                <td>{{ status_chip(alert.status == 'open' ? 'danger' : (alert.status == 'acknowledged' ? 'warn' : 'ok'), alert.status == 'open' ? 'Öppen' : (alert.status == 'acknowledged' ? 'Kvitterad' : 'Löst')) }}</td>
+                <td class="tabular muted">{{ alert.created_at }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}

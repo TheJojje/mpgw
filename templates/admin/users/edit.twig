@@ -1,0 +1,53 @@
+{% extends "layout.twig" %}
+{% block content %}
+<div class="breadcrumb">
+    <a href="/admin/users">Användare</a>
+    <span class="sep">/</span>
+    <span class="current">Redigera</span>
+</div>
+<h1>Redigera användare</h1>
+
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+<div class="form-panel">
+    <form method="post" action="/admin/users/{{ user.id }}/edit" class="form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Namn<input type="text" name="name" value="{{ user.name }}" required></label>
+        <label>E-post<input type="email" name="email" value="{{ user.email }}" required></label>
+        <label>Lösenord
+            <div class="password-field">
+                <input type="password" name="password" id="edit-user-pw" minlength="8">
+                <button type="button" class="password-toggle" data-toggle-pw="edit-user-pw" aria-label="Visa lösenord"><svg class="ic"><use href="#ic-eye"></use></svg></button>
+            </div>
+        </label>
+        <p class="hint">Lämna tomt för att behålla nuvarande lösenord.</p>
+
+        <fieldset>
+            <legend>Roller</legend>
+            <div class="chip-toggle-group">
+                {% for role in roles %}
+                <label class="chip-toggle{{ role.id in user_role_ids ? ' on' : '' }}">
+                    <input type="checkbox" name="role_ids[]" value="{{ role.id }}"{{ role.id in user_role_ids ? ' checked' : '' }}>
+                    <svg class="ic check-ic"><use href="#ic-check"></use></svg>
+                    {{ role.name }}
+                </label>
+                {% endfor %}
+            </div>
+        </fieldset>
+
+        <div>
+            <button type="submit" class="btn btn-primary">Spara ändringar</button>
+            <a class="btn" href="/admin/users">Avbryt</a>
+        </div>
+    </form>
+</div>
+
+<script>
+document.querySelectorAll('.chip-toggle').forEach(function (label) {
+    var input = label.querySelector('input');
+    var sync = function () { label.classList.toggle('on', input.checked); };
+    input.addEventListener('change', sync);
+    sync();
+});
+</script>
+{% endblock %}

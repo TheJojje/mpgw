@@ -1,0 +1,137 @@
+{% extends "layout.twig" %}
+{% block content %}
+<div class="breadcrumb">
+    <a href="/admin/applications">Applikationer</a>
+    <span class="sep">/</span>
+    <a href="/admin/applications/{{ application.id }}">{{ application.name }}</a>
+    <span class="sep">/</span>
+    <span class="current">Redigera mailbox</span>
+</div>
+<div class="page-header">
+    <div>
+        <h1>Redigera mailbox</h1>
+        {% if lastError %}<span class="status-chip danger" style="margin-top:6px;"><span class="dot2"></span>Senaste pollningen misslyckades</span>{% endif %}
+    </div>
+    <div class="page-header-actions">
+        <button type="submit" form="mailbox-edit-form" class="btn btn-primary">Spara</button>
+        <button type="submit" form="mailbox-delete-form" class="btn btn-danger">Radera mailbox</button>
+    </div>
+</div>
+
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+{% if lastError %}
+<div class="flash flash-warning" role="alert">
+    <strong>Senaste pollningen misslyckades{{ lastError.created_at ? ' (' ~ lastError.created_at ~ ')' : '' }}:</strong>
+    {{ lastError.message|default('Okänt fel vid hämtning från servern.') }}
+    Kontrollera uppgifterna nedan, eller testa anslutningen.
+</div>
+{% endif %}
+
+<form method="post" action="/admin/mailboxes/{{ mailbox.id }}/edit" class="form" id="mailbox-edit-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="mailbox-cards">
+        <fieldset class="card mailbox-card">
+            <legend>IMAP-mailbox</legend>
+            <label>Host<input type="text" name="mailbox_host" value="{{ mailbox.host }}" required placeholder="imap.example.com"></label>
+            <label>Användarnamn<input type="text" name="mailbox_username" value="{{ mailbox.username }}" required></label>
+            <label>Lösenord
+                <div class="password-field">
+                    <input type="password" name="mailbox_password" id="mbx-pw" placeholder="Lämna tomt för att behålla nuvarande">
+                    <button type="button" class="password-toggle" data-toggle-pw="mbx-pw" aria-label="Visa lösenord"><svg class="ic"><use href="#ic-eye"></use></svg></button>
+                </div>
+            </label>
+        </fieldset>
+
+        <fieldset class="card mailbox-card">
+            <legend>Avancerat</legend>
+            <label>Port<input type="number" name="mailbox_port" value="{{ mailbox.port }}" required></label>
+            <label>Kryptering
+                <select name="mailbox_encryption">
+                    <option value="ssl" {{ mailbox.encryption == 'ssl' ? 'selected' }}>SSL</option>
+                    <option value="tls" {{ mailbox.encryption == 'tls' ? 'selected' }}>TLS</option>
+                    <option value="none" {{ mailbox.encryption == 'none' ? 'selected' }}>Ingen (ej rekommenderat)</option>
+                </select>
+            </label>
+            <label>Mapp<input type="text" name="mailbox_folder" value="{{ mailbox.folder }}"></label>
+
+            <button type="button" class="btn" id="testConnectionBtn">Testa anslutning</button>
+        </fieldset>
+    </div>
+</form>
+
+<form method="post" action="/admin/mailboxes/{{ mailbox.id }}/delete" class="form" id="mailbox-delete-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+
+<script>
+(function () {
+    var toast = Swal.mixin({
+        toast: true,
+        position: 'bottom-end',
+        showConfirmButton: false,
+        timer: 5000,
+        timerProgressBar: true,
+        didOpen: function (el) {
+            el.addEventListener('mouseenter', Swal.stopTimer);
+            el.addEventListener('mouseleave', Swal.resumeTimer);
+        },
+    });
+
+    var btn = document.getElementById('testConnectionBtn');
+    var form = document.getElementById('mailbox-edit-form');
+
+    btn.addEventListener('click', function () {
+        var originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Testar...';
+
+        var formData = new FormData(form);
+
+        fetch('/admin/mailboxes/{{ mailbox.id }}/test', {
+            method: 'POST',
+            body: new URLSearchParams(formData),
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        })
+            .then(function (response) {
+                return response.json().catch(function () {
+                    throw new Error('Oväntat svar från servern (status ' + response.status + ').');
+                });
+            })
+            .then(function (data) {
+                toast.fire({
+                    icon: data.success ? 'success' : 'error',
+                    title: data.message || (data.success ? 'Anslutningen lyckades.' : 'Anslutningen misslyckades.'),
+                });
+            })
+            .catch(function (err) {
+                toast.fire({ icon: 'error', title: 'Kunde inte nå servern: ' + err.message });
+            })
+            .finally(function () {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            });
+    });
+
+    document.getElementById('mailbox-delete-form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var deleteForm = this;
+
+        Swal.fire({
+            icon: 'warning',
+            title: 'Radera denna mailbox?',
+            text: 'Den slutar pollas och döljs från listan.',
+            showCancelButton: true,
+            confirmButtonText: 'Radera',
+            cancelButtonText: 'Avbryt',
+            confirmButtonColor: '#C23B3B',
+        }).then(function (res) {
+            if (res.isConfirmed) {
+                deleteForm.submit();
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}

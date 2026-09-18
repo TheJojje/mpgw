@@ -1,0 +1,47 @@
+{% extends "layout.twig" %}
+{% block content %}
+<div class="breadcrumb">
+    <a href="/admin/applications">Applikationer</a>
+    <span class="sep">/</span>
+    <a href="/admin/applications/{{ application.id }}">{{ application.name }}</a>
+    <span class="sep">/</span>
+    <span class="current">Redigera</span>
+</div>
+<h1>Redigera applikation</h1>
+
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+<div class="form-panel">
+    <form method="post" action="/admin/applications/{{ application.id }}/edit" class="form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Namn<input type="text" name="name" value="{{ application.name }}" required></label>
+        <label>Beskrivning<textarea name="description">{{ application.description }}</textarea></label>
+        <label>Larm-mail (valfritt)<input type="email" name="alert_email" value="{{ application.alert_email }}"></label>
+        <label>Larm-webhook URL (valfritt)<input type="url" name="alert_webhook_url" value="{{ application.alert_webhook_url }}"></label>
+        <label>Spara extraherad data i (dagar, tomt = för alltid)<input type="number" name="retention_days" min="1" value="{{ application.retention_days }}"></label>
+        <label>Spara råmail i (dagar, tomt = för alltid)<input type="number" name="raw_email_retention_days" min="1" value="{{ application.raw_email_retention_days }}"></label>
+        <div>
+            <button type="submit" class="btn btn-primary">Spara ändringar</button>
+        </div>
+    </form>
+</div>
+
+<div class="danger-zone">
+    <h3>Radera applikation</h3>
+    <p>Applikationens mailboxar slutar pollas omedelbart. Mailhistorik och mallar behålls och kan återställas senare.</p>
+    <form method="post" action="/admin/applications/{{ application.id }}/delete" data-confirm-delete="applikationen &quot;{{ application.name }}&quot;? Dess mailboxar slutar pollas. Historik och mallar behålls.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-danger"><svg class="ic"><use href="#ic-trash"></use></svg> Radera applikation</button>
+    </form>
+</div>
+
+<script>
+document.querySelectorAll('[data-confirm-delete]').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+        if (!confirm('Radera ' + form.dataset.confirmDelete)) {
+            e.preventDefault();
+        }
+    });
+});
+</script>
+{% endblock %}

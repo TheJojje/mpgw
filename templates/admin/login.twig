@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="sv">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mail Parser Gateway</title>
+    <link rel="icon" href="/assets/favicon.png">
+    <link rel="stylesheet" href="/assets/css/admin.css">
+</head>
+<body class="login-body">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="ic-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="ic-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 5.2A9.6 9.6 0 0 1 12 5c6.5 0 10 7 10 7a15.6 15.6 0 0 1-4 5M6.2 6.2C3.5 8 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 3.4-.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+    <symbol id="ic-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></symbol>
+  </defs>
+</svg>
+<form method="post" action="/admin/login" class="login-form">
+    <div class="login-brand">MP</div>
+    <h1>Mail Parser Gateway</h1>
+    <p class="login-sub">Logga in för att hantera applikationer och mallar</p>
+    {% if error %}<p class="flash flash-error"><svg class="ic"><use href="#ic-alert"></use></svg> {{ error }}</p>{% endif %}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>E-post<input type="email" name="email" required autofocus></label>
+    <label>Lösenord
+        <div class="password-field">
+            <input type="password" name="password" id="login-password" required>
+            <button type="button" class="password-toggle" data-toggle-pw="login-password" aria-label="Visa lösenord"><svg class="ic"><use href="#ic-eye"></use></svg></button>
+        </div>
+    </label>
+    <button type="submit" class="btn btn-primary">Logga in</button>
+    <p class="login-footer">mpgw · internt verktyg</p>
+</form>
+<script>
+document.querySelectorAll('[data-toggle-pw]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var input = document.getElementById(btn.dataset.togglePw);
+        if (!input) return;
+        var showing = input.type === 'text';
+        input.type = showing ? 'password' : 'text';
+        btn.innerHTML = '<svg class="ic"><use href="#ic-' + (showing ? 'eye' : 'eye-off') + '"></use></svg>';
+    });
+});
+</script>
+</body>
+</html>

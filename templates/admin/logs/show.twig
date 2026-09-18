@@ -1,0 +1,73 @@
+{% extends "layout.twig" %}
+{% block content %}
+<div class="breadcrumb">
+    <a href="/admin/logs">Logg</a>
+    <span class="sep">/</span>
+    <span class="current">Händelse #{{ event.id }}</span>
+</div>
+<h1>{{ event.content }}</h1>
+
+<div class="panel" style="padding:16px 18px; margin-bottom:18px;">
+    <div class="cards" style="margin-bottom:0;">
+        <div class="card"><div class="card-label">Tid</div><div class="card-number" style="font-size:15px;">{{ event.created_at }}</div></div>
+        <div class="card"><div class="card-label">Modul</div><div class="card-number" style="font-size:15px;">{{ event.module }}</div></div>
+        <div class="card"><div class="card-label">Åtgärd</div><div class="card-number" style="font-size:15px;">{{ event.action }}</div></div>
+        <div class="card"><div class="card-label">Användare</div><div class="card-number" style="font-size:15px;">{{ event.actor_name ?: 'System' }}</div></div>
+    </div>
+</div>
+
+{% if diff|length > 0 %}
+<h3>Ändringar</h3>
+<table class="diff-table">
+    <thead><tr><th>Fält</th><th>Tidigare</th><th></th><th>Nytt</th></tr></thead>
+    <tbody>
+    {% for field, change in diff %}
+    <tr>
+        <td class="diff-field">{{ field }}</td>
+        <td>{% if change.old is not null %}<span class="diff-old">{{ change.old is iterable ? change.old|join(', ') : change.old }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="diff-arrow">→</td>
+        <td>{% if change.new is not null %}<span class="diff-new">{{ change.new is iterable ? change.new|join(', ') : change.new }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% elseif content_params|length > 0 %}
+<h3>Registrerat tillstånd</h3>
+<p class="muted">Första registrerade händelsen för det här objektet - ingen tidigare version att jämföra med.</p>
+<table class="diff-table">
+    <thead><tr><th>Fält</th><th>Värde</th></tr></thead>
+    <tbody>
+    {% for field, value in content_params %}
+    <tr>
+        <td class="diff-field">{{ field }}</td>
+        <td>
+            {% if field == 'key_prefix' %}
+                {{ masked_key(value) }}
+            {% else %}
+                {{ value is iterable ? value|join(', ') : value }}
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if timeline|length > 1 %}
+<h3>Historik för det här objektet</h3>
+<div class="table-wrap">
+    <table class="table">
+        <thead><tr><th>Tid</th><th>Åtgärd</th><th>Användare</th></tr></thead>
+        <tbody>
+        {% for item in timeline %}
+        <tr class="clickable" onclick="window.location='/admin/logs/{{ item.id }}'">
+            <td class="tabular">{{ item.created_at }}</td>
+            <td><code>{{ item.action }}</code></td>
+            <td>{{ item.actor_name ?: 'System' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}

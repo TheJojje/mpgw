@@ -1,0 +1,35 @@
+{
+    "name": "internal/mpgw",
+    "description": "Mail Parser Gateway - hamtar mail via IMAP, extraherar faltdata via anvandardefinierade regler och exponerar resultatet via ett API",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.2",
+        "ext-json": "*",
+        "ext-pdo": "*",
+        "ext-sodium": "*",
+        "php-di/php-di": "^7.0",
+        "slim/psr7": "^1.7",
+        "slim/slim": "^4.14",
+        "twig/twig": "^3.14",
+        "vlucas/phpdotenv": "^5.6",
+        "webklex/php-imap": "^5.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "Mpgw\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Mpgw\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true
+    }
+}

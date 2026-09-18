@@ -1,0 +1,55 @@
+{% extends "layout.twig" %}
+{% block content %}
+<div class="breadcrumb">
+    <a href="/admin/roles">Roller</a>
+    <span class="sep">/</span>
+    <span class="current">Redigera</span>
+</div>
+<h1>Redigera roll</h1>
+
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+{% if role.is_system %}
+<div class="form-step-hint">
+    <svg class="ic"><use href="#ic-info"></use></svg>
+    Detta är en systemroll och kan inte raderas, men rättigheterna kan justeras.
+</div>
+{% endif %}
+
+<div class="form-panel">
+    <form method="post" action="/admin/roles/{{ role.id }}/edit" class="form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Namn<input type="text" name="name" value="{{ role.name }}" required></label>
+        <label>Beskrivning<textarea name="description" rows="2">{{ role.description }}</textarea></label>
+
+        <fieldset>
+            <legend>Rättigheter</legend>
+            <table class="permission-matrix">
+                <thead><tr><th>Modul</th><th>Rättigheter</th></tr></thead>
+                <tbody>
+                {% for module, permissions in permission_groups %}
+                <tr>
+                    <td class="module-name">{{ module }}</td>
+                    <td>
+                        <div class="permission-checks">
+                            {% for permission in permissions %}
+                            <label>
+                                <input type="checkbox" name="permission_ids[]" value="{{ permission.id }}"{{ permission.id in role_permission_ids ? ' checked' : '' }}>
+                                {{ permission.name }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </fieldset>
+
+        <div>
+            <button type="submit" class="btn btn-primary">Spara ändringar</button>
+            <a class="btn" href="/admin/roles">Avbryt</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

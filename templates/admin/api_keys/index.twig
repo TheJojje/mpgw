@@ -1,0 +1,91 @@
+{% extends "layout.twig" %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>API-nycklar</h1>
+        <p class="muted" style="margin:0;">Nyckelskyddad läsåtkomst till extraherad data per applikation.</p>
+    </div>
+    <a class="btn btn-primary" href="/admin/api-keys/new"><svg class="ic"><use href="#ic-plus"></use></svg> Ny nyckel</a>
+</div>
+
+{% if new_key %}
+    <div class="flash flash-warning" id="new-key-flash">
+        <svg class="ic"><use href="#ic-key"></use></svg>
+        <div><strong>Kopiera nyckeln nu — den visas aldrig igen:</strong> <code id="new-key-value">{{ new_key }}</code></div>
+        <button type="button" class="btn btn-small flash-copy-btn" id="copy-new-key-btn"><svg class="ic"><use href="#ic-copy"></use></svg> Kopiera</button>
+    </div>
+{% endif %}
+
+{% if keys|length > 0 %}
+<div class="table-wrap">
+    <table class="table">
+        <thead><tr><th>Konsument</th><th>Applikation</th><th>Nyckel</th><th>Scopes</th><th>Senast använd</th><th>Status</th><th class="col-right">Åtgärder</th></tr></thead>
+        <tbody>
+        {% for key in keys %}
+            <tr>
+                <td>{{ key.consumer_name }}</td>
+                <td>{{ key.application_name|default('—') }}</td>
+                <td><code>{{ key.key_prefix }}…</code></td>
+                <td>
+                    {% for scope in key.scopes|json_decode %}
+                        <span class="scope-chip">{{ scope }}</span>
+                    {% endfor %}
+                </td>
+                <td class="tabular muted">{{ key.last_used_at|default('Aldrig') }}</td>
+                <td>{{ status_chip(key.is_active ? 'ok' : 'neutral', key.is_active ? 'Aktiv' : 'Återkallad') }}</td>
+                <td class="col-right">
+                    <div class="row-actions">
+                        {% if can('api_keys.manage') %}
+                            <a class="btn btn-small btn-icon-only" title="Redigera" aria-label="Redigera" href="/admin/api-keys/{{ key.id }}/edit"><svg class="ic"><use href="#ic-edit"></use></svg></a>
+                            {% if key.is_active %}
+                                <form method="post" action="/admin/api-keys/{{ key.id }}/delete" class="inline-form" data-confirm-delete="nyckeln för &quot;{{ key.consumer_name }}&quot;?">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-small btn-icon-only btn-danger" title="Inaktivera" aria-label="Inaktivera"><svg class="ic"><use href="#ic-trash"></use></svg></button>
+                                </form>
+                            {% else %}
+                                <form method="post" action="/admin/api-keys/{{ key.id }}/reactivate" class="inline-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-small">Återställ</button>
+                                </form>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+    <div class="panel">
+        <div class="empty-state">
+            <div class="empty-icon"><svg class="ic-lg"><use href="#ic-key"></use></svg></div>
+            <h3>Inga API-nycklar än</h3>
+            <p>Skapa en nyckel för att låta en extern applikation läsa extraherad data.</p>
+            <a class="btn btn-primary" href="/admin/api-keys/new">+ Ny nyckel</a>
+        </div>
+    </div>
+{% endif %}
+
+<script>
+var copyBtn = document.getElementById('copy-new-key-btn');
+copyBtn && copyBtn.addEventListener('click', function () {
+    var value = document.getElementById('new-key-value').textContent;
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(value);
+    }
+    copyBtn.innerHTML = '<svg class="ic"><use href="#ic-check"></use></svg> Kopierad';
+    setTimeout(function () {
+        copyBtn.innerHTML = '<svg class="ic"><use href="#ic-copy"></use></svg> Kopiera';
+    }, 2000);
+});
+
+document.querySelectorAll('[data-confirm-delete]').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+        if (!confirm('Inaktivera ' + form.dataset.confirmDelete)) {
+            e.preventDefault();
+        }
+    });
+});
+</script>
+{% endblock %}

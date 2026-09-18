@@ -1,0 +1,31 @@
+{% extends "layout.twig" %}
+{% block content %}
+<div class="breadcrumb">
+    <a href="/admin/applications">Applikationer</a>
+    <span class="sep">/</span>
+    <a href="/admin/applications/{{ application.id }}">{{ application.name }}</a>
+    <span class="sep">/</span>
+    <span class="current">Ny mall</span>
+</div>
+<h1>Ny mall för {{ application.name }}</h1>
+<p class="muted" style="margin:0 0 18px;">Beskriv vilka mail den här mallen ska matcha. Du bygger själva extraktionsreglerna i nästa steg.</p>
+
+<form method="post" action="/admin/applications/{{ application.id }}/templates" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Namn<input type="text" name="name" required placeholder="t.ex. Orderbekräftelse v2"></label>
+    <label>Från-adress matchar
+        <select name="from_match_type">
+            <option value="contains">Innehåller</option>
+            <option value="exact">Exakt</option>
+            <option value="regex">Regex</option>
+        </select>
+    </label>
+    <label>Från-mönster<input type="text" name="from_pattern" placeholder="orders@leverantor.se"></label>
+    <p class="hint">Tomt fält matchar alla avsändare.</p>
+    <label>Ämne-regex<input type="text" name="subject_regex" placeholder="/^Orderbekräftelse/i"></label>
+    <p class="hint">Tomt fält matchar alla ämnen.</p>
+    <label>Prioritet<input type="number" name="priority" value="100"></label>
+    <p class="hint">Lägre siffra provas först. Första matchande mall i prioritetsordning används.</p>
+    <button type="submit" class="btn btn-primary">Skapa mall — fortsätt till mallbyggaren <svg class="ic"><use href="#ic-arrow-right"></use></svg></button>
+</form>
+{% endblock %}

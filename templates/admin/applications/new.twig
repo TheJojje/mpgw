@@ -1,0 +1,61 @@
+{% extends "layout.twig" %}
+{% block content %}
+<div class="breadcrumb">
+    <a href="/admin/applications">Applikationer</a>
+    <span class="sep">/</span>
+    <span class="current">Ny applikation</span>
+</div>
+<h1>Ny applikation</h1>
+<p class="muted" style="margin:0 0 18px;">Registrera en integration och dess första IMAP-mailbox i ett svep.</p>
+
+<div class="form-step-hint">
+    <svg class="ic"><use href="#ic-info"></use></svg>
+    Steg 1 av 2 — när applikationen är skapad går du vidare till mallbyggaren för att lära mpgw tolka mailen.
+</div>
+
+<form method="post" action="/admin/applications">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="form-cards">
+        <fieldset class="form-card">
+            <legend>Applikationsuppgifter</legend>
+            <label>Namn<input type="text" name="name" required placeholder="t.ex. Bofast bokningssystem"></label>
+            <label>Beskrivning<textarea name="description" rows="2" placeholder="Vad används den här applikationen till?"></textarea></label>
+            <label>Larm-mail (valfritt)<input type="email" name="alert_email" placeholder="drift@dittforetag.se"></label>
+            <p class="hint">Skickas ett mail hit när en obligatorisk regel slutar matcha.</p>
+            <label>Larm-webhook URL (valfritt)<input type="url" name="alert_webhook_url" placeholder="https://hooks.slack.com/…"></label>
+            <p class="hint">Lämna tomt om du bara vill ha larm-mail. Stödjer Slack-kompatibla webhooks.</p>
+            <label>Spara extraherad data i (dagar, tomt = för alltid)<input type="number" name="retention_days" min="1" value="90"></label>
+            <label>Spara råmail i (dagar, tomt = för alltid)<input type="number" name="raw_email_retention_days" min="1" value="90"></label>
+            <p class="hint">Styr när extraherade fält respektive råa mail rensas automatiskt. Rensning av råmail tar även med tillhörande extraherad data.</p>
+        </fieldset>
+
+        <fieldset class="form-card">
+            <legend>IMAP-mailbox</legend>
+            <label>Host<input type="text" name="mailbox_host" required placeholder="imap.example.com"></label>
+            <label>Port<input type="number" name="mailbox_port" value="993" required></label>
+            <label>Kryptering
+                <select name="mailbox_encryption">
+                    <option value="ssl">SSL</option>
+                    <option value="tls">TLS</option>
+                    <option value="none">Ingen (ej rekommenderat)</option>
+                </select>
+            </label>
+            <p class="hint">SSL rekommenderas. Välj "Ingen" bara om servern saknar krypteringsstöd.</p>
+            <label>Användarnamn<input type="text" name="mailbox_username" required></label>
+            <label>Lösenord
+                <div class="password-field">
+                    <input type="password" name="mailbox_password" id="new-application-pw" required>
+                    <button type="button" class="password-toggle" data-toggle-pw="new-application-pw" aria-label="Visa lösenord"><svg class="ic"><use href="#ic-eye"></use></svg></button>
+                </div>
+            </label>
+            <label>Mapp<input type="text" name="mailbox_folder" value="INBOX"></label>
+        </fieldset>
+    </div>
+
+    <div style="display:flex; gap:10px; margin-top:20px;">
+        <button type="submit" class="btn btn-primary">Skapa applikation <svg class="ic"><use href="#ic-arrow-right"></use></svg></button>
+        <a class="btn" href="/admin/applications">Avbryt</a>
+    </div>
+</form>
+{% endblock %}

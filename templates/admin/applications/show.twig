@@ -1,0 +1,126 @@
+{% extends "layout.twig" %}
+{% block content %}
+<div class="breadcrumb">
+    <a href="/admin/applications">Applikationer</a>
+    <span class="sep">/</span>
+    <span class="current">{{ application.name }}</span>
+</div>
+<div class="page-header">
+    <h1>{{ application.name }}</h1>
+    <a class="btn" href="/admin/applications/{{ application.id }}/edit"><svg class="ic"><use href="#ic-edit"></use></svg> Redigera applikation</a>
+</div>
+
+<h2>Mailboxar</h2>
+{% if mailboxes|length > 0 %}
+<div class="table-wrap" style="margin-bottom:26px;">
+    <table class="table">
+        <thead><tr><th>Host</th><th>Användarnamn</th><th>Senast pollad</th><th>Status</th><th class="col-right">Åtgärder</th></tr></thead>
+        <tbody>
+        {% for mailbox in mailboxes %}
+            <tr>
+                <td><code>{{ mailbox.host }}:{{ mailbox.port }}</code></td>
+                <td>{{ mailbox.username }}</td>
+                <td class="tabular muted">{{ mailbox.last_polled_at|default('Aldrig') }}</td>
+                <td>
+                    {% if not mailbox.is_active %}
+                        {{ status_chip('neutral', 'Inaktiv') }}
+                    {% elseif mailbox.last_ingest_event == 'imap_error' %}
+                        {{ status_chip('danger', 'Fel vid pollning') }}
+                    {% else %}
+                        {{ status_chip('ok', 'Aktiv') }}
+                    {% endif %}
+                </td>
+                <td class="col-right"><a class="btn btn-small" href="/admin/mailboxes/{{ mailbox.id }}/edit"><svg class="ic"><use href="#ic-edit"></use></svg> Redigera</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+    <div class="panel" style="margin-bottom:26px;">
+        <div class="empty-state">
+            <div class="empty-icon"><svg class="ic-lg"><use href="#ic-server"></use></svg></div>
+            <h3>Inga mailboxar än</h3>
+            <p>Redigera applikationen för att lägga till en IMAP-mailbox.</p>
+        </div>
+    </div>
+{% endif %}
+
+<div class="page-header">
+    <h2 style="margin:0;">Mallar</h2>
+    <a class="btn btn-primary" href="/admin/applications/{{ application.id }}/templates/new"><svg class="ic"><use href="#ic-plus"></use></svg> Ny mall</a>
+</div>
+<div class="table-toolbar">
+    <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--ink-muted); cursor:pointer;">
+        {% if show_all_templates %}
+            <a href="/admin/applications/{{ application.id }}">Dölj inaktiva</a>
+        {% else %}
+            <a href="/admin/applications/{{ application.id }}?visa=alla">Visa även inaktiva</a>
+        {% endif %}
+    </label>
+</div>
+{% if templates|length > 0 %}
+<div class="table-wrap">
+    <table class="table">
+        <thead><tr><th>Prio</th><th>Namn</th><th>Från</th><th>Ämne (regex)</th><th>Regler</th><th>Träffgrad</th><th>Status</th><th class="col-right">Åtgärder</th></tr></thead>
+        <tbody>
+        {% for template in templates %}
+            <tr>
+                <td class="tabular muted">{{ template.priority }}</td>
+                <td>{{ template.name }}</td>
+                <td><code>{{ template.from_pattern|default('(alla)') }}</code></td>
+                <td><code>{{ template.subject_regex|default('(alla)') }}</code></td>
+                <td class="tabular">{{ template.rule_count }}</td>
+                <td>
+                    {% if template.avg_match_rate is not null %}
+                        {% set rate = (template.avg_match_rate * 100)|round %}
+                        {{ status_chip(rate >= 90 ? 'ok' : (rate >= 60 ? 'warn' : 'danger'), rate ~ '%') }}
+                    {% else %}
+                        <span class="muted" style="font-size:12.5px;">Ingen data än</span>
+                    {% endif %}
+                </td>
+                <td>{{ status_chip(template.is_active ? 'ok' : 'neutral', template.is_active ? 'Aktiv' : 'Inaktiv') }}</td>
+                <td class="col-right">
+                    <div class="row-actions">
+                        <a class="btn btn-small" href="/admin/templates/{{ template.id }}"><svg class="ic"><use href="#ic-arrow-right"></use></svg> Öppna</a>
+                        {% if can('applications.manage') %}
+                            {% if template.is_active %}
+                                <form method="post" action="/admin/applications/{{ application.id }}/templates/{{ template.id }}/delete" class="inline-form" data-confirm-delete="mallen &quot;{{ template.name }}&quot;? Dess regler behålls men slutar matcha nya mail.">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-small btn-icon-only btn-danger" title="Radera" aria-label="Radera"><svg class="ic"><use href="#ic-trash"></use></svg></button>
+                                </form>
+                            {% else %}
+                                <form method="post" action="/admin/applications/{{ application.id }}/templates/{{ template.id }}/reactivate" class="inline-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-small">Återställ</button>
+                                </form>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+    <div class="panel">
+        <div class="empty-state">
+            <div class="empty-icon"><svg class="ic-lg"><use href="#ic-inbox-empty"></use></svg></div>
+            <h3>{{ show_all_templates ? 'Inga mallar än' : 'Inga aktiva mallar' }}</h3>
+            <p>{{ show_all_templates ? 'Skapa en mall och bygg regler genom att markera text i ett exempelmail.' : 'Visa även inaktiva ovan om du söker en raderad mall.' }}</p>
+            {% if show_all_templates %}<a class="btn btn-primary" href="/admin/applications/{{ application.id }}/templates/new">+ Ny mall</a>{% endif %}
+        </div>
+    </div>
+{% endif %}
+
+<script>
+document.querySelectorAll('[data-confirm-delete]').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+        if (!confirm('Radera ' + form.dataset.confirmDelete)) {
+            e.preventDefault();
+        }
+    });
+});
+</script>
+{% endblock %}

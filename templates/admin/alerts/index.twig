@@ -1,0 +1,76 @@
+{% extends "layout.twig" %}
+{% block content %}
+<h1>Larm</h1>
+<p class="muted" style="margin:0 0 18px;">Bevakar obligatoriska fält som slutat matcha och mailboxar som inte går att nå.</p>
+
+<div class="table-toolbar">
+    <form method="get" action="/admin/alerts" id="alerts-filter-form" style="display:contents;">
+        <select name="severity" onchange="document.getElementById('alerts-filter-form').submit()">
+            <option value="">Alla allvarlighetsgrader</option>
+            <option value="critical" {{ severity_filter == 'critical' ? 'selected' }}>Kritisk</option>
+            <option value="warning" {{ severity_filter == 'warning' ? 'selected' }}>Varning</option>
+            <option value="info" {{ severity_filter == 'info' ? 'selected' }}>Info</option>
+        </select>
+        <select name="status" onchange="document.getElementById('alerts-filter-form').submit()">
+            <option value="">Alla statusar</option>
+            <option value="open" {{ status_filter == 'open' ? 'selected' }}>Öppen</option>
+            <option value="acknowledged" {{ status_filter == 'acknowledged' ? 'selected' }}>Kvitterad</option>
+            <option value="resolved" {{ status_filter == 'resolved' ? 'selected' }}>Löst</option>
+        </select>
+    </form>
+    {% if severity_filter or status_filter %}
+        <a class="btn-link toolbar-clear" href="/admin/alerts">Rensa filter</a>
+    {% endif %}
+    <span class="toolbar-count">{{ alerts|length }} larm</span>
+</div>
+
+{% if alerts|length > 0 %}
+<div class="table-wrap">
+    <table class="table">
+        <thead><tr><th>Typ</th><th>Allvarlighet</th><th>Applikation</th><th>Status</th><th>Skapat</th><th class="col-right">Åtgärd</th></tr></thead>
+        <tbody>
+        {% for alert in alerts %}
+            <tr>
+                <td>{{ alert.type }}</td>
+                <td>{{ status_chip(alert.severity == 'critical' ? 'danger' : (alert.severity == 'warning' ? 'warn' : 'neutral'), alert.severity == 'critical' ? 'Kritisk' : (alert.severity == 'warning' ? 'Varning' : 'Info')) }}</td>
+                <td>{% if alert.application_id %}<a class="btn-link" style="padding:0;" href="/admin/applications/{{ alert.application_id }}">{{ alert.application_name|default('—') }}</a>{% else %}—{% endif %}</td>
+                <td>{{ status_chip(alert.status == 'open' ? 'danger' : (alert.status == 'acknowledged' ? 'warn' : 'ok'), alert.status == 'open' ? 'Öppen' : (alert.status == 'acknowledged' ? 'Kvitterad' : 'Löst')) }}</td>
+                <td class="tabular muted">{{ alert.created_at }}</td>
+                <td class="col-right">
+                    {% if alert.status == 'open' %}
+                        <form method="post" action="/admin/alerts/{{ alert.id }}/acknowledge" class="inline-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-small">Kvittera</button>
+                        </form>
+                    {% elseif alert.status == 'acknowledged' %}
+                        <form method="post" action="/admin/alerts/{{ alert.id }}/resolve" class="inline-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-small">Markera löst</button>
+                        </form>
+                    {% else %}
+                        <span class="muted" style="font-size:12.5px;">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+    <div class="panel">
+        {% if not severity_filter and not status_filter %}
+            <div class="empty-state positive">
+                <div class="empty-icon"><svg class="ic-lg"><use href="#ic-check-circle"></use></svg></div>
+                <h3>Inga larm — allt fungerar</h3>
+                <p>Alla applikationer pollas och matchar som förväntat.</p>
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <div class="empty-icon"><svg class="ic-lg"><use href="#ic-alert"></use></svg></div>
+                <h3>Inga larm matchar filtret</h3>
+                <p>Justera filtren ovan för att se fler larm.</p>
+            </div>
+        {% endif %}
+    </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,167 @@
+{% extends "layout.twig" %}
+{% block content %}
+<div class="page-header">
+    <h1>Hjälp &amp; API-dokumentation</h1>
+</div>
+
+<div class="help-toc panel" style="padding:14px 18px; margin-bottom:18px;">
+    <strong>Innehåll:</strong>
+    <a href="#kom-igang">Kom igång</a> ·
+    <a href="#autentisering">Autentisering</a> ·
+    <a href="#scopes">Scopes</a> ·
+    <a href="#rate-limiting">Rate limiting</a> ·
+    <a href="#felformat">Felformat</a> ·
+    <a href="#endpoints">Endpoints</a> ·
+    <a href="#exempelklienter">Exempelklienter</a>
+</div>
+
+<section id="kom-igang">
+<h2>Kom igång</h2>
+<p>mpgw hämtar mail via IMAP, matchar dem mot mallar, extraherar fält enligt regler du själv bygger, och gör resultatet tillgängligt via ett nyckelskyddat API. Flödet för att komma igång:</p>
+<ol>
+    <li><strong><a href="/admin/applications/new">Ny applikation</a></strong> — registrera namn + IMAP-uppgifter för avsändarens mailbox.</li>
+    <li>På applikationssidan: <strong>Ny mall</strong> — ange från-adress/ämne-villkor för att matcha rätt mailtyp.</li>
+    <li>I mallbyggaren: klistra in ett exempelmail, markera text i antingen ämnesraden eller brödtexten för att bygga extraktionsregler — se förslag, justera, spara.</li>
+    <li><strong><a href="/admin/api-keys/new">Ny API-nyckel</a></strong> — knuten till exakt en applikation, med de scopes du väljer.</li>
+    <li>Låt cron köra <code>bin/poll-mailboxes.php</code>, hämta sedan ut data via <code>/api/v1/records</code>.</li>
+</ol>
+<p class="hint">mpgw gör själv ingen tolkning av vad ett mail <em>betyder</em> — varje post i API-svaret är bara rubrik och de fält en mall extraherat. Det är upp till din klient att strukturera datat (t.ex. avgöra om ett mail är en bokning eller en avbokning genom att läsa ett extraherat fält eller ämnesraden).</p>
+</section>
+
+<section id="autentisering">
+<h2>Autentisering</h2>
+<p>Alla anrop mot <code>/api/v1/*</code> (utom <code>/health</code>) kräver headern:</p>
+<pre class="code-block">X-API-Key: mpgw_xxxxxxxxxxxxxxxxxxxxxxxx</pre>
+<p>En nyckel skapas under <strong>API-nycklar → Ny nyckel</strong> och är knuten till <strong>exakt en applikation</strong> — den kan bara läsa data för den applikationen, aldrig andras. Den fulla nyckeln visas endast en gång vid skapande; mpgw lagrar aldrig den hemliga delen i klartext (bara en SHA-256-hash), så en tappad nyckel går inte att återskapa — skapa en ny istället.</p>
+<p>Ogiltig eller saknad nyckel ger <code>401 Unauthorized</code>.</p>
+</section>
+
+<section id="scopes">
+<h2>Scopes</h2>
+<p>Varje nyckel har en eller flera scopes som styr vilka endpoints den får anropa:</p>
+<table class="table">
+    <thead><tr><th>Scope</th><th>Ger tillgång till</th></tr></thead>
+    <tbody>
+        <tr><td><code>records:read</code></td><td><code>GET /records</code>, <code>GET /records/{uuid}</code></td></tr>
+        <tr><td><code>records:read:raw</code></td><td><code>GET /records/{uuid}/raw</code> — rått mailinnehåll (headers/body), mer PII-känsligt, kräver <code>records:read</code> också</td></tr>
+        <tr><td><code>templates:read</code></td><td><code>GET /applications</code>, <code>GET /templates</code></td></tr>
+        <tr><td><code>alerts:read</code></td><td><code>GET /alerts</code></td></tr>
+    </tbody>
+</table>
+<p>Ett anrop utan rätt scope ger <code>403 Forbidden</code> med kod <code>insufficient_scope</code>.</p>
+</section>
+
+<section id="rate-limiting">
+<h2>Rate limiting</h2>
+<p>Varje nyckel har en gräns per minut (standardvärde, eller en egen gräns satt vid skapande). Vid överskriden gräns svarar API:t:</p>
+<pre class="code-block">HTTP/1.1 429 Too Many Requests
+Retry-After: 60
+
+{"error": {"code": "rate_limited", "message": "För många anrop, försök igen om en stund."}}</pre>
+</section>
+
+<section id="felformat">
+<h2>Felformat</h2>
+<p>Alla fel följer samma struktur:</p>
+<pre class="code-block">{"error": {"code": "...", "message": "..."}}</pre>
+<table class="table">
+    <thead><tr><th>HTTP-status</th><th>code</th><th>Orsak</th></tr></thead>
+    <tbody>
+        <tr><td>401</td><td><code>unauthorized</code></td><td>Header <code>X-API-Key</code> saknas, är ogiltig, återkallad eller utgången</td></tr>
+        <tr><td>403</td><td><code>insufficient_scope</code></td><td>Nyckeln saknar det scope endpointen kräver</td></tr>
+        <tr><td>404</td><td><code>not_found</code></td><td>Ingen post med angivet uuid, eller den tillhör en annan applikation</td></tr>
+        <tr><td>429</td><td><code>rate_limited</code></td><td>Anropsgränsen för nyckeln är nådd den här minuten</td></tr>
+    </tbody>
+</table>
+</section>
+
+<section id="endpoints">
+<h2>Endpoints</h2>
+
+<h3><code>GET /api/v1/health</code></h3>
+<p>Ingen autentisering krävs. Enkel drifttest.</p>
+<pre class="code-block">curl https://mp.larssons.space/api/v1/health
+
+{"data": {"status": "ok", "time": "2026-09-15T09:00:00+00:00"}}</pre>
+
+<h3><code>GET /api/v1/records</code></h3>
+<p>Kräver <code>records:read</code>. Listar extraherade poster för nyckelns applikation, paginerat.</p>
+<p><strong>Query-parametrar:</strong> <code>page</code> (default 1), <code>per_page</code> (default 50, max 200), <code>status</code> (<code>success</code>/<code>partial</code>/<code>failed</code>), <code>template_id</code>.</p>
+<pre class="code-block">curl -H "X-API-Key: mpgw_xxx" \
+  "https://mp.larssons.space/api/v1/records?status=success&per_page=50"
+
+{
+  "data": [
+    {
+      "id": "7e7724d4-aeba-402f-a173-2d12d408ecf6",
+      "application": "Boappa bokningar",
+      "template": "Bokning",
+      "status": "success",
+      "match_rate": 1,
+      "processed_at": "2026-09-14 14:41:27"
+    }
+  ],
+  "meta": {"page": 1, "per_page": 50, "total": 1}
+}</pre>
+
+<h3><code>GET /api/v1/records/{uuid}</code></h3>
+<p>Kräver <code>records:read</code>. Samma fält som ovan plus <code>fields</code> — nyckel/värde för varje fält mallen extraherat (obundet till fasta kolumner, mallen definierar fritt vilka fält som finns).</p>
+<pre class="code-block">curl -H "X-API-Key: mpgw_xxx" \
+  https://mp.larssons.space/api/v1/records/7e7724d4-aeba-402f-a173-2d12d408ecf6
+
+{
+  "data": {
+    "id": "7e7724d4-aeba-402f-a173-2d12d408ecf6",
+    "application": "Boappa bokningar",
+    "template": "Bokning",
+    "status": "success",
+    "match_rate": 1,
+    "processed_at": "2026-09-14 14:41:27",
+    "fields": {
+      "event_type": "bokning",
+      "apartment_number": "452",
+      "facility": "Gästrum 1",
+      "start_date": "06-11-2026",
+      "end_date": "06-11-2026",
+      "guest_name": "Anna-Karin Oterhals"
+    }
+  }
+}</pre>
+<p class="hint">Exemplet visar hur en klient kan läsa <code>fields.event_type</code> för att själv avgöra om posten är en bokning eller avbokning — mpgw har bara extraherat vad mallens regler pekar ut, ingen inbyggd tolkning.</p>
+
+<h3><code>GET /api/v1/records/{uuid}/raw</code></h3>
+<p>Kräver <strong>både</strong> <code>records:read</code> och <code>records:read:raw</code>. Returnerar rått mailinnehåll.</p>
+<pre class="code-block">{
+  "data": {
+    "from": "styrelsen@brflinneasutsikt.se",
+    "subject": "En ny bokning",
+    "received_at": "2026-09-14 07:54:36",
+    "raw_headers": "...",
+    "raw_body": "..."
+  }
+}</pre>
+
+<h3><code>GET /api/v1/applications</code></h3>
+<p>Kräver <code>templates:read</code>. Returnerar bara nyckelns egen applikation (aldrig andras, för att inte läcka vilka konsumenter/applikationer som finns).</p>
+<pre class="code-block">{"data": [{"id": 2, "name": "Boappa bokningar", "is_active": 1}]}</pre>
+
+<h3><code>GET /api/v1/templates</code></h3>
+<p>Kräver <code>templates:read</code>. Mallar för nyckelns applikation.</p>
+<pre class="code-block">{"data": [{"id": 2, "application_id": 2, "name": "Bokning", "priority": 20, "is_active": 1}]}</pre>
+
+<h3><code>GET /api/v1/alerts</code></h3>
+<p>Kräver <code>alerts:read</code>. Öppna larm för nyckelns applikation (format-ändringar, IMAP-fel).</p>
+<pre class="code-block">{"data": [{"id": 1, "type": "no_template_match", "severity": "warning", "status": "open", "created_at": "...", "application_name": "Boappa bokningar"}]}</pre>
+</section>
+
+<section id="exempelklienter">
+<h2>Exempelklienter</h2>
+<p>Repot innehåller fristående, körbara exempel (ren cURL, ingen kod delad med applikationen) som visar hur ett externt system kan konsumera API:t:</p>
+<pre class="code-block"># JSON, inklusive extraherade fält
+php bin/fetch-records.php --key=mpgw_xxx --out=records.json --with-fields
+
+# CSV, filtrerat på status
+php bin/fetch-records.php --key=mpgw_xxx --out=records.csv --status=success --with-fields</pre>
+<p>Kör <code>php bin/fetch-records.php</code> utan argument för fullständig flagg-lista.</p>
+</section>
+{% endblock %}

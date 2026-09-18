@@ -1,0 +1,108 @@
+{% extends "layout.twig" %}
+{% block content %}
+<div class="breadcrumb">
+    <a href="/admin/emails">Mailhistorik</a>
+    <span class="sep">/</span>
+    <span class="current">{{ email.subject|default('(inget ämne)') }}</span>
+</div>
+<div class="page-header">
+    <h1>{{ email.subject|default('(inget ämne)') }}</h1>
+    {% if record %}
+        {{ status_chip(record.status == 'success' ? 'ok' : (record.status == 'partial' ? 'warn' : 'danger'), 'Träffgrad ' ~ (record.match_rate * 100)|round ~ '%') }}
+    {% endif %}
+</div>
+
+<div class="split-card" style="margin-bottom:20px;">
+    <div class="split-card-half">
+        <h2>Om mailet</h2>
+        <dl class="meta-list" style="margin-bottom:0;">
+            <dt>Från</dt><dd>{{ email.from_address }}</dd>
+            <dt>Hämtat</dt><dd class="tabular">{{ email.fetched_at }}</dd>
+            <dt>Mottaget</dt><dd class="tabular">{{ email.received_at|default('okänt') }}</dd>
+        </dl>
+    </div>
+    <div class="split-card-half">
+        <h2>Extraherat resultat</h2>
+        {% if record %}
+            {% if field_matches|length > 0 %}
+                <p class="hint" style="margin:-8px 0 12px;">Hovra ett fält för att se var i mailet det extraherades ifrån.</p>
+            {% endif %}
+            <div class="field-rows" style="border:1px solid var(--border); border-radius:var(--radius-sm);">
+            {% for field in fields %}
+                {% set m = field_matches[field.field_name] ?? null %}
+                {% if m and m.matched and m.char_start is not null %}
+                    <div class="field-row" data-field-id="f{{ loop.index0 }}" style="--rule-color: var({{ rule_color_var(loop.index0) }}); --rule-color-tint: var({{ rule_color_var(loop.index0) }}-tint);" tabindex="0">
+                        <div class="f-name"><span class="rule-swatch"></span>{{ field.field_name }}</div>
+                        <div class="f-value">{{ field.field_value|default('—') }}</div>
+                        {{ status_chip('ok', 'Träff') }}
+                    </div>
+                {% else %}
+                    <div class="field-row" style="cursor:default;">
+                        <div class="f-name">{{ field.field_name }}</div>
+                        <div class="f-value">{{ field.field_value|default('—') }}</div>
+                        {{ status_chip(field.matched ? 'ok' : 'danger', field.matched ? 'Träff' : 'Ingen träff') }}
+                    </div>
+                {% endif %}
+            {% endfor %}
+            </div>
+        {% else %}
+            <p class="flash flash-warning" style="margin:0;">Mailet matchade ingen mall.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="disclosure" id="raw-email-disclosure">
+    <button type="button" class="disclosure-toggle" data-disclosure-toggle="raw-email-disclosure">
+        <svg class="ic"><use href="#ic-mail"></use></svg>
+        Rått mail
+        <span class="hint" style="font-weight:400;">— så här såg mailet ut innan normalisering</span>
+        <svg class="ic chevron"><use href="#ic-chevron-right"></use></svg>
+    </button>
+    <div class="disclosure-body">
+        <pre class="source-text">{%- if field_matches|length > 0 and email.normalized_text -%}
+            {%- set cursor = 0 -%}
+            {%- set segments = [] -%}
+            {%- for field in fields -%}
+                {%- set m = field_matches[field.field_name] ?? null -%}
+                {%- if m and m.matched and m.char_start is not null -%}
+                    {%- set segments = segments|merge([{ start: m.char_start, end: m.char_end, color_index: loop.index0 }]) -%}
+                {%- endif -%}
+            {%- endfor -%}
+            {%- for seg in segments|sort((a, b) => a.start <=> b.start) -%}
+                {{- email.normalized_text|slice(cursor, seg.start - cursor) -}}
+                <mark data-field-id="f{{ seg.color_index }}" style="--rule-color: var({{ rule_color_var(seg.color_index) }}); --rule-color-tint: var({{ rule_color_var(seg.color_index) }}-tint);" tabindex="0">{{- email.normalized_text|slice(seg.start, seg.end - seg.start) -}}</mark>
+                {%- set cursor = seg.end -%}
+            {%- endfor -%}
+            {{- email.normalized_text|slice(cursor) -}}
+        {%- else -%}
+            {{- email.raw_body -}}
+        {%- endif -%}</pre>
+    </div>
+</div>
+
+<script>
+document.querySelectorAll('[data-disclosure-toggle]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var el = document.getElementById(btn.dataset.disclosureToggle);
+        if (el) { el.classList.toggle('open'); }
+    });
+});
+
+// Tvåvägs hover: extraherat-fält-rad <-> markering i rått mail (samma
+// färgkopplingskomponent som mallbyggaren, se templates/edit.twig + template-builder.js).
+(function () {
+    function setHighlight(fieldId, on) {
+        document.querySelectorAll('[data-field-id="' + CSS.escape(fieldId) + '"]').forEach(function (el) {
+            el.classList.toggle('hl', on);
+        });
+    }
+    document.querySelectorAll('[data-field-id]').forEach(function (el) {
+        var id = el.dataset.fieldId;
+        el.addEventListener('mouseenter', function () { setHighlight(id, true); });
+        el.addEventListener('mouseleave', function () { setHighlight(id, false); });
+        el.addEventListener('focus', function () { setHighlight(id, true); });
+        el.addEventListener('blur', function () { setHighlight(id, false); });
+    });
+})();
+</script>
+{% endblock %}

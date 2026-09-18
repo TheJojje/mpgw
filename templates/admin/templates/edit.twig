@@ -1,0 +1,211 @@
+{% extends "layout.twig" %}
+{% block content %}
+<div class="breadcrumb">
+    <a href="/admin/applications">Applikationer</a>
+    <span class="sep">/</span>
+    <a href="/admin/applications/{{ application.id }}">{{ application.name }}</a>
+    <span class="sep">/</span>
+    <span class="current">{{ template.name }}</span>
+</div>
+<div class="page-header">
+    <h1>{{ template.name }} <span class="muted" style="font-size:15px; font-weight:500;">({{ application.name }})</span></h1>
+    <button type="button" class="btn btn-small btn-icon-only" title="Redigera mall" aria-label="Redigera mall" data-toggle-edit="template-fields"><svg class="ic"><use href="#ic-edit"></use></svg></button>
+</div>
+
+<div id="edit-row-template-fields" class="new-rule-panel" style="margin-bottom:20px;" {{ fields_error ? '' : 'hidden' }}>
+    <form method="post" action="/admin/templates/{{ template.id }}/edit-fields" class="form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if fields_error %}<p class="error">{{ fields_error }}</p>{% endif %}
+        <fieldset>
+            <legend>Redigera {{ template.name }}</legend>
+            <label>Namn<input type="text" name="name" value="{{ template.name }}" required></label>
+            <label>Från-mönster (valfritt)<input type="text" name="from_pattern" value="{{ template.from_pattern }}"></label>
+            <label>Matchningstyp
+                <select name="from_match_type">
+                    <option value="contains" {{ template.from_match_type == 'contains' ? 'selected' : '' }}>Innehåller</option>
+                    <option value="exact" {{ template.from_match_type == 'exact' ? 'selected' : '' }}>Exakt</option>
+                    <option value="regex" {{ template.from_match_type == 'regex' ? 'selected' : '' }}>Regex</option>
+                </select>
+            </label>
+            <label>Ämne (regex, valfritt)<input type="text" name="subject_regex" value="{{ template.subject_regex }}"></label>
+            <label>Prioritet<input type="number" name="priority" value="{{ template.priority }}"></label>
+        </fieldset>
+        <div class="inline-form-actions">
+            <button type="submit" class="btn btn-primary">Spara</button>
+            <button type="button" class="btn" data-cancel-edit="template-fields">Avbryt</button>
+        </div>
+    </form>
+</div>
+
+<ol class="steps" id="builder-steps">
+    <li id="step-1" class="step-active">1. Välj eller klistra in ett exempelmail</li>
+    <li id="step-2">2. Markera text i mailet för att skapa en regel — eller lägg till en manuellt</li>
+    <li id="step-3">3. Granska förslaget, justera vid behov och spara</li>
+</ol>
+
+<div class="builder-grid">
+    <section class="builder-source form-card">
+        <h2 style="margin-top:0;">Exempelmail</h2>
+        <div class="source-controls">
+            <label class="hint" for="raw-email-picker">Välj ett tidigare mottaget mail...</label>
+            <select id="raw-email-picker">
+                <option value="">— eller klistra in eget mail nedan —</option>
+                {% for email in recent_emails %}
+                    <option value="{{ email.id }}" {{ selected_raw_email_id == email.id ? 'selected' : '' }}>
+                        {{ email.fetched_at }} — {{ email.from_address }} — {{ email.subject|default('(inget ämne)') }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <textarea id="raw-email-paste" placeholder="...eller klistra in rätt mailtext här (text eller HTML) och tryck Normalisera" rows="6">{{ pasted_raw_text|default('') }}</textarea>
+        <button type="button" id="normalize-btn" class="btn">Normalisera &amp; visa</button>
+
+        <h3 style="margin-top:4px;">Ämnesrad <span class="hint" style="font-weight:400;">— också en körbar källa för en regel</span></h3>
+        <pre id="normalized-subject" class="source-text" data-source="subject" data-raw-email-id="{{ selected_raw_email_id|default('') }}" data-placeholder="{{ normalized_subject is empty ? '1' : '' }}"
+            >{%- if normalized_subject is not empty -%}
+                {%- set cursor = 0 -%}
+                {%- set segments = [] -%}
+                {%- for rule in rules -%}
+                    {%- if (rule.source ?? 'body') == 'subject' -%}
+                        {%- set m = rule_matches[rule.id] ?? null -%}
+                        {%- if m and m.matched and m.char_start is not null -%}
+                            {%- set segments = segments|merge([{ start: m.char_start, end: m.char_end, rule_id: rule.id, color_index: loop.index0 }]) -%}
+                        {%- endif -%}
+                    {%- endif -%}
+                {%- endfor -%}
+                {%- for seg in segments|sort((a, b) => a.start <=> b.start) -%}
+                    {{- normalized_subject|slice(cursor, seg.start - cursor) -}}
+                    <mark data-rule-id="{{ seg.rule_id }}" style="--rule-color: var({{ rule_color_var(seg.color_index) }}); --rule-color-tint: var({{ rule_color_var(seg.color_index) }}-tint);" tabindex="0">{{- normalized_subject|slice(seg.start, seg.end - seg.start) -}}</mark>
+                    {%- set cursor = seg.end -%}
+                {%- endfor -%}
+                {{- normalized_subject|slice(cursor) -}}
+            {%- else -%}
+                (inget ämne)
+            {%- endif -%}</pre>
+
+        <h3 style="margin-top:14px;">Normaliserad text <span class="hint" style="font-weight:400;">— det regler faktiskt körs mot</span></h3>
+        <p class="hint" id="normalized-hint">
+            {% if rule_matches|length > 0 %}
+                Markerade färger visar var dina sparade regler redan träffar. Markera ny text för att skapa ytterligare en regel.
+            {% else %}
+                Markera en textbit här nere med musen för att få regex-förslag för ett nytt fält.
+            {% endif %}
+        </p>
+        <pre id="normalized-text" class="source-text" data-source="body" data-raw-email-id="{{ selected_raw_email_id|default('') }}" data-placeholder="{{ normalized_text is empty ? '1' : '' }}"
+            >{%- if normalized_text is not empty -%}
+                {%- set cursor = 0 -%}
+                {%- set segments = [] -%}
+                {%- for rule in rules -%}
+                    {%- if (rule.source ?? 'body') == 'body' -%}
+                        {%- set m = rule_matches[rule.id] ?? null -%}
+                        {%- if m and m.matched and m.char_start is not null -%}
+                            {%- set segments = segments|merge([{ start: m.char_start, end: m.char_end, rule_id: rule.id, color_index: loop.index0 }]) -%}
+                        {%- endif -%}
+                    {%- endif -%}
+                {%- endfor -%}
+                {%- for seg in segments|sort((a, b) => a.start <=> b.start) -%}
+                    {{- normalized_text|slice(cursor, seg.start - cursor) -}}
+                    <mark data-rule-id="{{ seg.rule_id }}" style="--rule-color: var({{ rule_color_var(seg.color_index) }}); --rule-color-tint: var({{ rule_color_var(seg.color_index) }}-tint);" tabindex="0">{{- normalized_text|slice(seg.start, seg.end - seg.start) -}}</mark>
+                    {%- set cursor = seg.end -%}
+                {%- endfor -%}
+                {{- normalized_text|slice(cursor) -}}
+            {%- else -%}
+                Välj eller klistra in ett mail ovan, tryck sedan Normalisera & visa.
+            {%- endif -%}</pre>
+    </section>
+
+    <section class="builder-rules form-card">
+        <div class="page-header" style="margin-bottom:10px; margin-top:0;">
+            <h2 style="margin:0;">Regler ({{ rules|length }})</h2>
+            <button type="button" id="add-rule-manually-btn" class="btn btn-small">+ Lägg till regel manuellt</button>
+        </div>
+        <div id="rule-summary" class="rule-summary" data-template-id="{{ template.id }}">
+            {% if rules|length > 0 %}
+                Alla regler testas live mot det inlästa mailet — hovra en regel för att se var den träffar.
+            {% endif %}
+        </div>
+        <ul id="rule-list" class="rule-list">
+        {% for rule in rules %}
+            {% set m = rule_matches[rule.id] ?? null %}
+            <li data-rule-id="{{ rule.id }}" data-source="{{ rule.source|default('body') }}" style="--rule-color: var({{ rule_color_var(loop.index0) }}); --rule-color-tint: var({{ rule_color_var(loop.index0) }}-tint);">
+                <div class="rule-row">
+                    <div>
+                        <div class="rule-name"><span class="rule-swatch"></span><strong>{{ rule.field_label|default(rule.field_name) }}</strong>
+                        <span class="muted">({{ rule.field_name }}{% if rule.is_required %}, obligatorisk{% endif %}{% if (rule.source|default('body')) == 'subject' %}, från ämnesrad{% endif %})</span></div>
+                        <code>{{ rule.pattern }}</code>
+                    </div>
+                    <button type="button" class="btn btn-small edit-rule-btn"
+                        data-rule-id="{{ rule.id }}"
+                        data-field-name="{{ rule.field_name }}"
+                        data-field-label="{{ rule.field_label }}"
+                        data-data-type="{{ rule.data_type }}"
+                        data-pattern="{{ rule.pattern }}"
+                        data-is-required="{{ rule.is_required ? '1' : '' }}"
+                        data-source="{{ rule.source|default('body') }}">Redigera</button>
+                    <button type="button" class="btn btn-small delete-rule-btn" data-rule-id="{{ rule.id }}">Ta bort</button>
+                </div>
+                {% if m %}
+                    {{ status_chip(m.matched ? 'ok' : 'danger', m.matched ? 'Träff: "' ~ m.value ~ '"' : 'Ingen träff mot detta mail') }}
+                {% else %}
+                    <span class="rule-result" data-pattern="{{ rule.pattern }}"></span>
+                {% endif %}
+            </li>
+        {% else %}
+            <li class="muted">Inga regler än. Markera text i mailet till vänster, eller lägg till en regel manuellt.</li>
+        {% endfor %}
+        </ul>
+
+        <div id="new-rule-panel" class="new-rule-panel" hidden>
+            <h3 id="new-rule-title">Ny regel</h3>
+            <p id="selection-preview-wrap"><span class="hint">Markering:</span> <code id="selected-text-preview"></code></p>
+            <div id="suggestions"></div>
+
+            <form id="save-rule-form" class="form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="rule_id" id="rule-editing-id">
+                <input type="hidden" name="raw_email_id" id="rule-raw-email-id">
+                <input type="hidden" name="selection_start" id="rule-selection-start">
+                <input type="hidden" name="selection_end" id="rule-selection-end">
+                <label id="rule-source-field" hidden>Källa
+                    <select name="source" id="rule-source">
+                        <option value="body">Brödtext</option>
+                        <option value="subject">Ämnesrad</option>
+                    </select>
+                </label>
+                <label>Fältnamn (databasnyckel)<input type="text" name="field_name" id="rule-field-name" required pattern="[a-z][a-z0-9_]*" placeholder="order_number"></label>
+                <label>Visningsnamn<input type="text" name="field_label" id="rule-field-label" placeholder="Ordernummer"></label>
+                <label>Typ
+                    <select name="data_type" id="rule-data-type">
+                        <option value="string">Text</option>
+                        <option value="number">Heltal</option>
+                        <option value="decimal">Decimaltal</option>
+                        <option value="date">Datum</option>
+                    </select>
+                </label>
+                <label><input type="checkbox" name="is_required" id="rule-is-required"> Obligatoriskt fält (larmar om det slutar matcha)</label>
+                <label>Mönster (regex, redigerbart)<input type="text" name="pattern" id="rule-pattern" required placeholder="/Etikett:\s*(?&lt;value&gt;[^\n]+)/"></label>
+                <p class="hint">Använd en namngiven grupp <code>(?&lt;value&gt;...)</code> för det du vill extrahera, annars används hela träffen.</p>
+                <p id="live-test-result" class="live-test-result"></p>
+                <button type="submit" class="btn btn-primary">Spara regel</button>
+                <button type="button" id="cancel-rule-btn" class="btn">Avbryt</button>
+            </form>
+        </div>
+    </section>
+</div>
+
+<script>
+document.querySelectorAll('[data-toggle-edit]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var row = document.getElementById('edit-row-' + btn.dataset.toggleEdit);
+        if (row) { row.hidden = !row.hidden; }
+    });
+});
+document.querySelectorAll('[data-cancel-edit]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var row = document.getElementById('edit-row-' + btn.dataset.cancelEdit);
+        if (row) { row.hidden = true; }
+    });
+});
+</script>
+<script src="/assets/js/template-builder.js"></script>
+{% endblock %}

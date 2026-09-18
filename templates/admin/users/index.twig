@@ -1,0 +1,78 @@
+{% extends "layout.twig" %}
+{% block content %}
+<div class="page-header">
+    <h1>Användare</h1>
+    {% if can('users.manage') %}
+    <a class="btn btn-primary" href="/admin/users/new"><svg class="ic"><use href="#ic-plus"></use></svg> Ny användare</a>
+    {% endif %}
+</div>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+<div class="table-toolbar">
+    <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--ink-muted); cursor:pointer;">
+        {% if show_all %}
+            <a href="/admin/users">Dölj inaktiva</a>
+        {% else %}
+            <a href="/admin/users?visa=alla">Visa även inaktiva</a>
+        {% endif %}
+    </label>
+    <span class="toolbar-count">{{ users|length }} användare</span>
+</div>
+
+{% if users|length > 0 %}
+<div class="table-wrap">
+    <table class="table">
+        <thead><tr><th>Namn</th><th>E-post</th><th>Roller</th><th>Senast inloggad</th><th>Status</th><th class="col-right">Åtgärder</th></tr></thead>
+        <tbody>
+        {% for user in users %}
+        <tr>
+            <td>{{ user.name }}</td>
+            <td>{{ user.email }}</td>
+            <td>
+                {% for role in user.roles %}{{ status_chip('neutral', role.name) }} {% else %}<span class="muted">Ingen roll</span>{% endfor %}
+            </td>
+            <td class="tabular">{{ user.last_login_at ? user.last_login_at : 'Aldrig' }}</td>
+            <td>{{ status_chip(user.is_active ? 'ok' : 'neutral', user.is_active ? 'Aktiv' : 'Inaktiv') }}</td>
+            <td class="col-right">
+                <div class="row-actions">
+                    {% if can('users.manage') %}
+                        <a class="btn btn-small btn-icon-only" title="Redigera" aria-label="Redigera" href="/admin/users/{{ user.id }}/edit"><svg class="ic"><use href="#ic-edit"></use></svg></a>
+                        {% if user.is_active %}
+                            <form method="post" action="/admin/users/{{ user.id }}/delete" class="inline-form" data-confirm-delete="användaren &quot;{{ user.name }}&quot;?">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-small btn-icon-only btn-danger" title="Inaktivera" aria-label="Inaktivera"><svg class="ic"><use href="#ic-trash"></use></svg></button>
+                            </form>
+                        {% else %}
+                            <form method="post" action="/admin/users/{{ user.id }}/reactivate" class="inline-form">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-small">Återställ</button>
+                            </form>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+    <div class="panel">
+        <div class="empty-state">
+            <div class="empty-icon"><svg class="ic-lg"><use href="#ic-inbox-empty"></use></svg></div>
+            <h3>Inga användare</h3>
+            <p>Visa även inaktiva ovan om du söker en inaktiverad användare.</p>
+        </div>
+    </div>
+{% endif %}
+
+<script>
+document.querySelectorAll('[data-confirm-delete]').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+        if (!confirm('Inaktivera ' + form.dataset.confirmDelete)) {
+            e.preventDefault();
+        }
+    });
+});
+</script>
+{% endblock %}

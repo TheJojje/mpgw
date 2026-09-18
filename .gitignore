@@ -1,0 +1,8 @@
+/vendor/
+/.env
+/var/log/*
+!/var/log/.gitkeep
+/var/cache/*
+!/var/cache/.gitkeep
+.DS_Store
+/.claude/scheduled_tasks.lock

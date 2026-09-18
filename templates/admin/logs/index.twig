@@ -1,0 +1,60 @@
+{% extends "layout.twig" %}
+{% block content %}
+<div class="page-header">
+    <h1>Granskningslogg</h1>
+</div>
+
+<form method="get" action="/admin/logs" class="table-toolbar">
+    <select name="modul" onchange="this.form.submit()">
+        <option value="">Alla moduler</option>
+        {% for module in modules %}
+        <option value="{{ module }}"{{ module == selected_module ? ' selected' : '' }}>{{ module }}</option>
+        {% endfor %}
+    </select>
+    <select name="anvandare" onchange="this.form.submit()">
+        <option value="">Alla användare</option>
+        {% for user in users %}
+        <option value="{{ user.id }}"{{ user.id == selected_actor_user_id ? ' selected' : '' }}>{{ user.name }}</option>
+        {% endfor %}
+    </select>
+    <span class="toolbar-count">{{ total }} händelser</span>
+</form>
+
+{% if events|length > 0 %}
+<div class="table-wrap">
+    <table class="table">
+        <thead><tr><th>Tid</th><th>Modul</th><th>Åtgärd</th><th>Användare</th><th>Beskrivning</th><th>IP</th><th>Nyckel</th></tr></thead>
+        <tbody>
+        {% for event in events %}
+        {% set params = event.content_params|json_decode %}
+        <tr class="clickable" onclick="window.location='/admin/logs/{{ event.id }}'">
+            <td class="tabular">{{ event.created_at }}</td>
+            <td>{{ status_chip(event.level == 'error' ? 'danger' : (event.level == 'warning' ? 'warn' : 'neutral'), event.module) }}</td>
+            <td><code>{{ event.action }}</code></td>
+            <td>{{ event.actor_name ?: 'System' }}</td>
+            <td>{{ event.content }}</td>
+            <td class="tabular muted">{{ params.ip|default('—') }}</td>
+            <td>{% if params.key_prefix is defined %}{{ masked_key(params.key_prefix) }}{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if total_pages > 1 %}
+<div class="table-toolbar">
+    {% if page > 1 %}<a class="btn btn-small" href="?sida={{ page - 1 }}&modul={{ selected_module }}&anvandare={{ selected_actor_user_id }}">Föregående</a>{% endif %}
+    <span class="toolbar-count">Sida {{ page }} av {{ total_pages }}</span>
+    {% if page < total_pages %}<a class="btn btn-small" href="?sida={{ page + 1 }}&modul={{ selected_module }}&anvandare={{ selected_actor_user_id }}">Nästa</a>{% endif %}
+</div>
+{% endif %}
+
+{% else %}
+    <div class="panel">
+        <div class="empty-state">
+            <div class="empty-icon"><svg class="ic-lg"><use href="#ic-inbox-empty"></use></svg></div>
+            <h3>Inga loggade händelser än</h3>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}

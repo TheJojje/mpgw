@@ -1,0 +1,66 @@
+{% extends "layout.twig" %}
+{% block content %}
+<h1>Mailhistorik</h1>
+<p class="muted" style="margin:0 0 18px;">Alla mail som hämtats via IMAP-pollningen, oavsett om de matchade en mall.</p>
+
+<div class="table-toolbar">
+    <form method="get" action="/admin/emails" style="display:contents;">
+        <div class="search-field">
+            <svg class="ic"><use href="#ic-search"></use></svg>
+            <input type="text" name="q" value="{{ search }}" placeholder="Sök på avsändare eller ämne…">
+        </div>
+        <select name="status" onchange="this.form.submit()">
+            <option value="">Alla statusar</option>
+            <option value="success" {{ status_filter == 'success' ? 'selected' }}>Matchad</option>
+            <option value="partial" {{ status_filter == 'partial' ? 'selected' }}>Delvis matchad</option>
+            <option value="failed" {{ status_filter == 'failed' ? 'selected' }}>Ej matchad</option>
+        </select>
+        <select name="application" onchange="this.form.submit()">
+            <option value="">Alla applikationer</option>
+            {% for application in applications %}
+                <option value="{{ application.id }}" {{ application_filter == application.id ? 'selected' : '' }}>{{ application.name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-small">Sök</button>
+    </form>
+    {% if search or status_filter or application_filter %}
+        <a class="btn-link toolbar-clear" href="/admin/emails">Rensa filter</a>
+    {% endif %}
+    <span class="toolbar-count">{{ emails|length }} mail</span>
+</div>
+
+{% if emails|length > 0 %}
+<div class="table-wrap">
+    <table class="table">
+        <thead><tr><th>Hämtat</th><th>Från</th><th>Ämne</th><th>Status</th></tr></thead>
+        <tbody>
+        {% for email in emails %}
+            <tr class="clickable" onclick="window.location='/admin/emails/{{ email.uuid }}'">
+                <td class="tabular muted">{{ email.fetched_at }}</td>
+                <td>{{ email.from_address }}</td>
+                <td>{{ email.subject|default('(inget ämne)') }}</td>
+                <td>
+                    {% if email.status == 'success' %}
+                        {{ status_chip('ok', 'Matchad') }}
+                    {% elseif email.status == 'partial' %}
+                        {{ status_chip('warn', 'Delvis matchad') }}
+                    {% else %}
+                        {{ status_chip('danger', 'Ej matchad') }}
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+    <div class="panel">
+        <div class="empty-state">
+            <div class="empty-icon"><svg class="ic-lg"><use href="#ic-inbox-empty"></use></svg></div>
+            <h3>{{ (search or status_filter or application_filter) ? 'Inga mail matchar sökningen' : 'Inga mail hämtade än' }}</h3>
+            <p>{{ (search or status_filter or application_filter) ? 'Justera sökningen eller filtret ovan.' : 'Kontrollera att minst en mailbox är konfigurerad och aktiv.' }}</p>
+            {% if not search and not status_filter and not application_filter %}<a class="btn" href="/admin/applications">Visa applikationer</a>{% endif %}
+        </div>
+    </div>
+{% endif %}
+{% endblock %}

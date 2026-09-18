@@ -1,0 +1,58 @@
+{% extends "layout.twig" %}
+{% block content %}
+<div class="page-header">
+    <h1>Roller</h1>
+    {% if can('roles.manage') %}
+    <a class="btn btn-primary" href="/admin/roles/new"><svg class="ic"><use href="#ic-plus"></use></svg> Ny roll</a>
+    {% endif %}
+</div>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+{% if roles|length > 0 %}
+<div class="table-wrap">
+    <table class="table">
+        <thead><tr><th>Namn</th><th>Beskrivning</th><th>Rättigheter</th><th>Typ</th><th class="col-right">Åtgärder</th></tr></thead>
+        <tbody>
+        {% for role in roles %}
+        <tr>
+            <td>{{ role.name }}</td>
+            <td class="muted">{{ role.description }}</td>
+            <td class="tabular">{{ role.permission_count }}</td>
+            <td>{{ role.is_system ? status_chip('neutral', 'Systemroll') : status_chip('ok', 'Anpassad') }}</td>
+            <td class="col-right">
+                <div class="row-actions">
+                    {% if can('roles.manage') %}
+                        <a class="btn btn-small btn-icon-only" title="Redigera" aria-label="Redigera" href="/admin/roles/{{ role.id }}/edit"><svg class="ic"><use href="#ic-edit"></use></svg></a>
+                        {% if not role.is_system %}
+                            <form method="post" action="/admin/roles/{{ role.id }}/delete" class="inline-form" data-confirm-delete="rollen &quot;{{ role.name }}&quot;?">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-small btn-icon-only btn-danger" title="Radera" aria-label="Radera"><svg class="ic"><use href="#ic-trash"></use></svg></button>
+                            </form>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+    <div class="panel">
+        <div class="empty-state">
+            <div class="empty-icon"><svg class="ic-lg"><use href="#ic-inbox-empty"></use></svg></div>
+            <h3>Inga roller registrerade</h3>
+        </div>
+    </div>
+{% endif %}
+
+<script>
+document.querySelectorAll('[data-confirm-delete]').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+        if (!confirm('Radera ' + form.dataset.confirmDelete)) {
+            e.preventDefault();
+        }
+    });
+});
+</script>
+{% endblock %}
