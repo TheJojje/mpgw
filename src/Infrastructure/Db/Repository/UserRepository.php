@@ -42,6 +42,29 @@ final class UserRepository
         return $row === false ? null : $row;
     }
 
+    /** Som findByEmail men inkluderar inaktiva (SSO maste kunna avvisa dem i stallet for att skapa dubbletter). */
+    public function findByEmailAnyStatus(string $email): ?array
+    {
+        $stmt = $this->db->prepare('SELECT * FROM users WHERE email = ?');
+        $stmt->execute([$email]);
+        $row = $stmt->fetch();
+        return $row === false ? null : $row;
+    }
+
+    public function findByOidcSub(string $sub): ?array
+    {
+        $stmt = $this->db->prepare('SELECT * FROM users WHERE oidc_sub = ?');
+        $stmt->execute([$sub]);
+        $row = $stmt->fetch();
+        return $row === false ? null : $row;
+    }
+
+    public function setOidcSub(int $id, string $sub): void
+    {
+        $stmt = $this->db->prepare('UPDATE users SET oidc_sub = ? WHERE id = ?');
+        $stmt->execute([$sub, $id]);
+    }
+
     public function emailExists(string $email, ?int $excludeId = null): bool
     {
         if ($excludeId !== null) {

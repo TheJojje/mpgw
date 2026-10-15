@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Mpgw\Http\Controller\Admin;
 
+use Jumbojett\OpenIDConnectClient;
 use Mpgw\Http\Middleware\CsrfMiddleware;
 use Mpgw\Http\View\ViewRenderer;
 use Mpgw\Infrastructure\Db\Repository\UserRepository;
@@ -21,6 +22,7 @@ final class AuthController
         private readonly AuthorizationService $authz,
         private readonly AuditLogger $audit,
         private readonly LoginThrottle $throttle,
+        private readonly array $oidcConfig = [],
     ) {
     }
 
@@ -98,6 +100,11 @@ final class AuthController
 
     public function logout(Request $request, Response $response): Response
     {
+        $data = (array) $request->getParsedBody();
+        if (!CsrfMiddleware::verify($data['csrf_token'] ?? null)) {
+            return $response->withHeader('Location', '/admin')->withStatus(302);
+        }
+
         if (!empty($_SESSION['admin_user_id'])) {
             $userId = (int) $_SESSION['admin_user_id'];
             $user = $this->users->find($userId);
@@ -105,8 +112,16 @@ final class AuthController
             $this->audit->log('auth', 'logout', $userId, 'user', $userId, ($user['name'] ?? 'Användaren') . ' loggade ut', ['ip' => $ip]);
         }
 
+        $idToken = $_SESSION['oidc_id_token'] ?? null;
+
         $_SESSION = [];
         session_destroy();
+
+        // Enkel utloggning fran authentik (kraver att post-logout-URI ar tillaten i providern).
+        if (is_string($idToken) && !empty($this->oidcConfig['enabled']) && !empty($this->oidcConfig['sso_logout'])) {
+            $oidc = new OpenIDConnectClient($this->oidcConfig['issuer'], $this->oidcConfig['client_id'], $this->oidcConfig['client_secret']);
+            $oidc->signOut($idToken, $this->oidcConfig['post_logout_redirect_uri']);
+        }
 
         return $response->withHeader('Location', '/admin/login')->withStatus(302);
     }

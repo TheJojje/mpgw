@@ -32,7 +32,7 @@
 {% if emails|length > 0 %}
 <div class="table-wrap">
     <table class="table">
-        <thead><tr><th>Hämtat</th><th>Från</th><th>Ämne</th><th>Status</th></tr></thead>
+        <thead><tr><th>Hämtat</th><th>Från</th><th>Ämne</th><th>Status</th>{% if can('emails.manage') %}<th></th>{% endif %}</tr></thead>
         <tbody>
         {% for email in emails %}
             <tr class="clickable" onclick="window.location='/admin/emails/{{ email.uuid }}'">
@@ -48,6 +48,14 @@
                         {{ status_chip('danger', 'Ej matchad') }}
                     {% endif %}
                 </td>
+                {% if can('emails.manage') %}
+                <td class="row-actions" onclick="event.stopPropagation()">
+                    <form method="post" action="/admin/emails/{{ email.uuid }}/delete" class="inline-form" data-confirm-delete="mailet? Det tas bort permanent tillsammans med extraherade fält och importeras inte igen.">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-small btn-icon-only btn-danger" title="Radera" aria-label="Radera"><svg class="ic"><use href="#ic-trash"></use></svg></button>
+                    </form>
+                </td>
+                {% endif %}
             </tr>
         {% endfor %}
         </tbody>
@@ -63,4 +71,14 @@
         </div>
     </div>
 {% endif %}
+
+<script>
+document.querySelectorAll('[data-confirm-delete]').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+        if (!confirm('Radera ' + form.dataset.confirmDelete)) {
+            e.preventDefault();
+        }
+    });
+});
+</script>
 {% endblock %}

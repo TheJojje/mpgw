@@ -6,6 +6,7 @@ use Mpgw\Http\Controller\Admin\AlertsController;
 use Mpgw\Http\Controller\Admin\ApiKeysController;
 use Mpgw\Http\Controller\Admin\ApplicationsController;
 use Mpgw\Http\Controller\Admin\AuthController;
+use Mpgw\Http\Controller\Admin\OidcController;
 use Mpgw\Http\Controller\Admin\DashboardController;
 use Mpgw\Http\Controller\Admin\EmailsController;
 use Mpgw\Http\Controller\Admin\HelpController;
@@ -37,6 +38,9 @@ return function (App $app): void {
     $app->get('/admin/login', [AuthController::class, 'showLogin']);
     $app->post('/admin/login', [AuthController::class, 'login']);
     $app->post('/admin/logout', [AuthController::class, 'logout']);
+
+    $app->get('/auth/oidc/login', [OidcController::class, 'login']);
+    $app->get('/auth/oidc/callback', [OidcController::class, 'callback']);
 
     $app->group('/admin', function (RouteCollectorProxy $group) use ($container): void {
         /** @var AuthorizationService $authz */
@@ -76,6 +80,7 @@ return function (App $app): void {
 
         $group->get('/emails', [EmailsController::class, 'index'])->add($perm('emails.view'));
         $group->get('/emails/{uuid}', [EmailsController::class, 'show'])->add($perm('emails.view'));
+        $group->post('/emails/{uuid}/delete', [EmailsController::class, 'delete'])->add($perm('emails.manage'));
 
         $group->get('/alerts', [AlertsController::class, 'index'])->add($perm('alerts.view'));
         $group->post('/alerts/{id}/acknowledge', [AlertsController::class, 'acknowledge'])->add($perm('alerts.manage'));

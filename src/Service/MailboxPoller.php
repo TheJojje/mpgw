@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Mpgw\Service;
 
+use Mpgw\Infrastructure\Db\Repository\DeletedEmailRepository;
 use Mpgw\Infrastructure\Db\Repository\ExtractedRecordRepository;
 use Mpgw\Infrastructure\Db\Repository\ExtractionRuleRepository;
 use Mpgw\Infrastructure\Db\Repository\IngestLogRepository;
@@ -40,6 +41,7 @@ final class MailboxPoller
         private readonly TemplateMatcher $templateMatcher,
         private readonly RuleEngine $ruleEngine,
         private readonly AuditLogger $audit,
+        private readonly DeletedEmailRepository $deletedEmails,
     ) {
     }
 
@@ -132,6 +134,13 @@ final class MailboxPoller
 
         if ($this->rawEmails->existsByContentHash($contentHash)) {
             $this->ingestLog->log($mailboxId, null, 'fetched', 'Duplicerat innehall (content_hash), hoppar over.');
+            return;
+        }
+
+        // Mail som en administratör raderat ska inte importeras om, även
+        // om last_seen_uid nollställts eller servern ger nya UID:n.
+        if ($this->deletedEmails->isDeleted($contentHash, $message['message_id'] ?? null, $mailboxId)) {
+            $this->ingestLog->log($mailboxId, null, 'fetched', 'Raderat mail, hoppar over.');
             return;
         }
 

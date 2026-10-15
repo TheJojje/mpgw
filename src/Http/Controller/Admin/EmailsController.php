@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace Mpgw\Http\Controller\Admin;
 
+use Mpgw\Http\Middleware\CsrfMiddleware;
 use Mpgw\Http\View\ViewRenderer;
 use Mpgw\Infrastructure\Db\Repository\ApplicationRepository;
+use Mpgw\Infrastructure\Db\Repository\DeletedEmailRepository;
 use Mpgw\Infrastructure\Db\Repository\ExtractionRuleRepository;
 use Mpgw\Infrastructure\Db\Repository\RawEmailRepository;
+use Mpgw\Service\AuditLogger;
 use Mpgw\Service\RuleEngine;
+use Mpgw\Support\FlashMessage;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -22,7 +26,35 @@ final class EmailsController
         private readonly RuleEngine $ruleEngine,
         private readonly ApplicationRepository $applications,
         private readonly RawEmailRepository $rawEmails,
+        private readonly DeletedEmailRepository $deletedEmails,
+        private readonly AuditLogger $audit,
     ) {
+    }
+
+    public function delete(Request $request, Response $response, array $args): Response
+    {
+        $email = $this->rawEmails->findByUuid($args['uuid']);
+        if ($email === null) {
+            return $response->withStatus(404);
+        }
+
+        $data = (array) $request->getParsedBody();
+        if (!CsrfMiddleware::verify($data['csrf_token'] ?? null)) {
+            return $response->withStatus(400);
+        }
+
+        $userId = !empty($_SESSION['admin_user_id']) ? (int) $_SESSION['admin_user_id'] : null;
+        $this->deletedEmails->deleteEmailWithTombstone($email, $userId);
+
+        $this->audit->log('emails', 'deleted', $userId, 'raw_email', (int) $email['id'], 'Mail raderades', [
+            'uuid' => $email['uuid'],
+            'mailbox_id' => $email['mailbox_id'],
+            'subject' => $email['subject'],
+        ]);
+
+        FlashMessage::success('Mailet raderades och kommer inte importeras igen.');
+
+        return $response->withHeader('Location', '/admin/emails')->withStatus(302);
     }
 
     public function index(Request $request, Response $response): Response

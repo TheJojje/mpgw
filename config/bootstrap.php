@@ -6,6 +6,8 @@ use DI\Container;
 use Mpgw\Http\Controller\Admin\AlertsController;
 use Mpgw\Http\Controller\Admin\ApiKeysController;
 use Mpgw\Http\Controller\Admin\AuthController;
+use Mpgw\Http\Controller\Admin\OidcController;
+use Mpgw\Service\OidcRoleMapper;
 use Mpgw\Http\Controller\Admin\DashboardController;
 use Mpgw\Http\Controller\Admin\EmailsController;
 use Mpgw\Http\Controller\Admin\HelpController;
@@ -30,6 +32,7 @@ use Mpgw\Infrastructure\Db\Repository\IngestLogRepository;
 use Mpgw\Infrastructure\Db\Repository\LogEventRepository;
 use Mpgw\Infrastructure\Db\Repository\MailboxRepository;
 use Mpgw\Infrastructure\Db\Repository\PermissionRepository;
+use Mpgw\Infrastructure\Db\Repository\DeletedEmailRepository;
 use Mpgw\Infrastructure\Db\Repository\RawEmailRepository;
 use Mpgw\Infrastructure\Db\Repository\RoleRepository;
 use Mpgw\Infrastructure\Db\Repository\ApplicationRepository;
@@ -66,6 +69,7 @@ $container->set(ApiKeyRepository::class, fn (Container $c) => new ApiKeyReposito
 $container->set(ApplicationRepository::class, fn (Container $c) => new ApplicationRepository($c->get(PDO::class)));
 $container->set(MailboxRepository::class, fn (Container $c) => new MailboxRepository($c->get(PDO::class)));
 $container->set(RawEmailRepository::class, fn (Container $c) => new RawEmailRepository($c->get(PDO::class), $c->get(CredentialCipher::class)));
+$container->set(DeletedEmailRepository::class, fn (Container $c) => new DeletedEmailRepository($c->get(PDO::class)));
 $container->set(TemplateRepository::class, fn (Container $c) => new TemplateRepository($c->get(PDO::class)));
 $container->set(ExtractionRuleRepository::class, fn (Container $c) => new ExtractionRuleRepository($c->get(PDO::class)));
 $container->set(ExtractedRecordRepository::class, fn (Container $c) => new ExtractedRecordRepository($c->get(PDO::class)));
@@ -110,17 +114,23 @@ $container->set(MailboxPoller::class, fn (Container $c) => new MailboxPoller(
     $c->get(TemplateMatcher::class),
     $c->get(RuleEngine::class),
     $c->get(AuditLogger::class),
+    $c->get(DeletedEmailRepository::class),
 ));
 
 // --------------------------------------------------------------------
 // Web (admin-UI + API): view-renderer, middleware, controllers
 // --------------------------------------------------------------------
-$container->set(ViewRenderer::class, fn (Container $c) => new ViewRenderer(
-    dirname(__DIR__) . '/templates/admin',
-    $config['app']['debug'],
-    $c->get(PDO::class),
-    $c->get(AuthorizationService::class),
-));
+$container->set(ViewRenderer::class, function (Container $c) use ($config) {
+    $view = new ViewRenderer(
+        dirname(__DIR__) . '/templates/admin',
+        $config['app']['debug'],
+        $c->get(PDO::class),
+        $c->get(AuthorizationService::class),
+    );
+    $view->addGlobal('oidc_enabled', $config['oidc']['enabled']);
+
+    return $view;
+});
 
 $container->set(AdminAuthMiddleware::class, fn () => new AdminAuthMiddleware());
 $container->set(ApiKeyAuthMiddleware::class, fn (Container $c) => new ApiKeyAuthMiddleware($c->get(PDO::class), $c->get(AuditLogger::class)));
@@ -136,6 +146,22 @@ $container->set(AuthController::class, fn (Container $c) => new AuthController(
     $c->get(AuthorizationService::class),
     $c->get(AuditLogger::class),
     $c->get(LoginThrottle::class),
+    $config['oidc'],
+));
+$container->set(OidcRoleMapper::class, fn () => new OidcRoleMapper(
+    $config['oidc']['access_group'],
+    $config['oidc']['admin_group'],
+    $config['oidc']['default_role'],
+    $config['oidc']['admin_role'],
+));
+$container->set(OidcController::class, fn (Container $c) => new OidcController(
+    $config['oidc'],
+    $c->get(ViewRenderer::class),
+    $c->get(UserRepository::class),
+    $c->get(RoleRepository::class),
+    $c->get(AuthorizationService::class),
+    $c->get(AuditLogger::class),
+    $c->get(OidcRoleMapper::class),
 ));
 $container->set(DashboardController::class, fn (Container $c) => new DashboardController($c->get(ViewRenderer::class), $c->get(PDO::class)));
 $container->set(HelpController::class, fn (Container $c) => new HelpController($c->get(ViewRenderer::class)));
@@ -177,6 +203,8 @@ $container->set(EmailsController::class, fn (Container $c) => new EmailsControll
     $c->get(RuleEngine::class),
     $c->get(ApplicationRepository::class),
     $c->get(RawEmailRepository::class),
+    $c->get(DeletedEmailRepository::class),
+    $c->get(AuditLogger::class),
 ));
 $container->set(AlertsController::class, fn (Container $c) => new AlertsController(
     $c->get(ViewRenderer::class),

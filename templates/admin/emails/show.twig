@@ -10,6 +10,12 @@
     {% if record %}
         {{ status_chip(record.status == 'success' ? 'ok' : (record.status == 'partial' ? 'warn' : 'danger'), 'Träffgrad ' ~ (record.match_rate * 100)|round ~ '%') }}
     {% endif %}
+    {% if can('emails.manage') %}
+        <form method="post" action="/admin/emails/{{ email.uuid }}/delete" class="inline-form" data-confirm-delete="mailet? Det tas bort permanent tillsammans med extraherade fält och importeras inte igen.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-small btn-danger"><svg class="ic"><use href="#ic-trash"></use></svg> Radera</button>
+        </form>
+    {% endif %}
 </div>
 
 <div class="split-card" style="margin-bottom:20px;">
@@ -81,6 +87,14 @@
 </div>
 
 <script>
+document.querySelectorAll('[data-confirm-delete]').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+        if (!confirm('Radera ' + form.dataset.confirmDelete)) {
+            e.preventDefault();
+        }
+    });
+});
+
 document.querySelectorAll('[data-disclosure-toggle]').forEach(function (btn) {
     btn.addEventListener('click', function () {
         var el = document.getElementById(btn.dataset.disclosureToggle);

@@ -29,6 +29,9 @@
         </div>
     </label>
     <button type="submit" class="btn btn-primary">Logga in</button>
+    {% if oidc_enabled %}
+    <a href="/auth/oidc/login" class="btn">Logga in med authentik</a>
+    {% endif %}
     <p class="login-footer">mpgw · internt verktyg</p>
 </form>
 <script>

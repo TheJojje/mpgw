@@ -56,6 +56,11 @@ final class ViewRenderer
         $this->twig->addFilter(new \Twig\TwigFilter('json_decode', static fn (?string $json) => $json !== null ? (json_decode($json, true) ?: []) : []));
     }
 
+    public function addGlobal(string $name, mixed $value): void
+    {
+        $this->twig->addGlobal($name, $value);
+    }
+
     public static function renderStatusChip(string $variant, string $label): string
     {
         $allowed = ['ok', 'warn', 'danger', 'neutral'];
