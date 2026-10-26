@@ -163,6 +163,13 @@ final class MailboxesController
         if ($submittedPassword !== '') {
             $password = $submittedPassword;
         } else {
+            // SAKERHET: det sparade losenordet far bara provas mot mailboxens SPARADE
+            // host/port/anvandare. Annars kunde en postad host fa servern att skicka
+            // det dekrypterade losenordet till en godtycklig server.
+            $host = (string) $mailbox['host'];
+            $port = (int) $mailbox['port'];
+            $encryption = (string) $mailbox['encryption'];
+            $username = (string) $mailbox['username'];
             $password = $this->cipher->decrypt($mailbox['secret_ciphertext'], $mailbox['secret_nonce']);
         }
 

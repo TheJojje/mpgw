@@ -87,7 +87,21 @@ final class OidcController
             return $this->deny($request, $response, 500, "Rollen '{$roleSlug}' finns inte i mpgw.");
         }
 
+        // E-post som IdP:n uttryckligen markerat som overifierad far inte anvandas for att
+        // ta over ett befintligt konto.
+        $emailVerified = $oidc->getVerifiedClaims('email_verified');
+        if ($emailVerified === false) {
+            return $this->deny($request, $response, 403, 'E-postadressen är inte verifierad hos authentik.');
+        }
+
         $user = $this->users->findByOidcSub($sub) ?? $this->users->findByEmailAnyStatus($email);
+
+        // Ett konto som redan ar kopplat till en annan SSO-identitet far inte "overtas" via e-post.
+        if ($user !== null && !empty($user['oidc_sub']) && $user['oidc_sub'] !== $sub) {
+            $this->audit->log('auth', 'login_denied', (int) $user['id'], 'user', (int) $user['id'], "SSO nekad (kontot tillhör en annan identitet): {$email}", ['ip' => $ip, 'method' => 'oidc'], level: 'warning');
+
+            return $this->deny($request, $response, 403, 'Kontot är redan kopplat till en annan SSO-identitet.');
+        }
 
         if ($user !== null && (int) $user['is_active'] !== 1) {
             $this->audit->log('auth', 'login_denied', (int) $user['id'], 'user', (int) $user['id'], "SSO nekad (inaktiv användare): {$email}", ['ip' => $ip, 'method' => 'oidc'], level: 'warning');

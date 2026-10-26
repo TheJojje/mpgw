@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Mpgw\Http\Middleware\AdminAuthMiddleware;
+use Mpgw\Http\Middleware\SecurityHeadersMiddleware;
 use Slim\Factory\AppFactory;
 
 /** @var \DI\Container $container */
@@ -12,6 +13,7 @@ AppFactory::setContainer($container);
 $app = AppFactory::create();
 
 $app->addBodyParsingMiddleware();
+$app->add(new SecurityHeadersMiddleware((bool) $container->get('config')['session']['secure']));
 $app->addRoutingMiddleware();
 
 $config = $container->get('config');

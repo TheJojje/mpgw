@@ -66,7 +66,7 @@ return function (App $app): void {
         $group->get('/mailboxes/{id}/edit', [MailboxesController::class, 'editForm'])->add($perm('applications.manage'));
         $group->post('/mailboxes/{id}/edit', [MailboxesController::class, 'update'])->add($perm('applications.manage'));
         $group->post('/mailboxes/{id}/poll', [MailboxesController::class, 'poll'])->add($perm('applications.manage'));
-        $group->post('/mailboxes/{id}/test', [MailboxesController::class, 'testConnection'])->add($perm('applications.view'));
+        $group->post('/mailboxes/{id}/test', [MailboxesController::class, 'testConnection'])->add($perm('applications.manage'));
         $group->post('/mailboxes/{id}/delete', [MailboxesController::class, 'delete'])->add($perm('applications.manage'));
 
         $group->get('/templates/{id}', [TemplatesController::class, 'edit'])->add($perm('applications.view'));

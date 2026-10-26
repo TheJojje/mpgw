@@ -141,7 +141,7 @@ $container->set(ViewRenderer::class, function (Container $c) use ($config) {
     return $view;
 });
 
-$container->set(AdminAuthMiddleware::class, fn () => new AdminAuthMiddleware());
+$container->set(AdminAuthMiddleware::class, fn (Container $c) => new AdminAuthMiddleware($c->get(UserRepository::class), $c->get(AuthorizationService::class)));
 $container->set(ApiKeyAuthMiddleware::class, fn (Container $c) => new ApiKeyAuthMiddleware($c->get(PDO::class), $c->get(AuditLogger::class)));
 $container->set(RateLimitMiddleware::class, fn (Container $c) => new RateLimitMiddleware(
     $c->get(PDO::class),

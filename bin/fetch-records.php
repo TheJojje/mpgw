@@ -140,6 +140,12 @@ function writeJson(array $records, string $path): void
     }
 }
 
+/** Skyddar mot CSV/Excel-formelinjektion: celler som borjar med = + - @ (eller tab/CR) far ett inledande '. */
+function csvSafe(mixed $value): mixed
+{
+    return is_string($value) && $value !== '' && preg_match('/^[=+\-@\t\r]/', $value) === 1 ? "'" . $value : $value;
+}
+
 function writeCsv(array $records, string $path): void
 {
     // Kolumner: de fasta falten + unionen av alla dynamiska "fields"-namn
@@ -164,10 +170,10 @@ function writeCsv(array $records, string $path): void
     foreach ($records as $record) {
         $row = [];
         foreach ($fixedColumns as $col) {
-            $row[] = $record[$col] ?? '';
+            $row[] = csvSafe($record[$col] ?? '');
         }
         foreach ($fieldColumns as $col) {
-            $row[] = $record['fields'][$col] ?? '';
+            $row[] = csvSafe($record['fields'][$col] ?? '');
         }
         fputcsv($fh, $row);
     }
