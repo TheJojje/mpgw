@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Mpgw\Service;
 
+use Mpgw\Infrastructure\Db\Repository\AlertRepository;
 use Mpgw\Infrastructure\Db\Repository\DeletedEmailRepository;
 use Mpgw\Infrastructure\Db\Repository\ExtractedRecordRepository;
 use Mpgw\Infrastructure\Db\Repository\ExtractionRuleRepository;
@@ -42,6 +43,7 @@ final class MailboxPoller
         private readonly RuleEngine $ruleEngine,
         private readonly AuditLogger $audit,
         private readonly DeletedEmailRepository $deletedEmails,
+        private readonly AlertRepository $alerts,
     ) {
     }
 
@@ -178,5 +180,26 @@ final class MailboxPoller
         $result = $this->ruleEngine->run($rules, $normalizedText, $normalizedSubject);
         $this->records->storeResult($rawEmailId, (int) $matchedTemplate['id'], $result);
         $this->ingestLog->log($mailboxId, $rawEmailId, 'rule_engine_ran', $result->status);
+
+        // Delvis matchning betyder oftast att avsandaren andrat mailformatet.
+        if ($result->status === 'partial') {
+            $this->alerts->create(
+                'low_match_rate',
+                $applicationId,
+                (int) $matchedTemplate['id'],
+                $rawEmailId,
+                'warning',
+                [
+                    'reason' => 'partial_match',
+                    'template' => $matchedTemplate['name'],
+                    'match_rate' => $result->matchRate,
+                    'unmatched_fields' => array_values(array_column(
+                        array_filter($result->fields, static fn (array $f): bool => !$f['matched']),
+                        'field_name'
+                    )),
+                    'missing_required_fields' => $result->missingRequiredFields,
+                ],
+            );
+        }
     }
 }

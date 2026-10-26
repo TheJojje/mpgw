@@ -80,6 +80,7 @@ return function (App $app): void {
 
         $group->get('/emails', [EmailsController::class, 'index'])->add($perm('emails.view'));
         $group->get('/emails/{uuid}', [EmailsController::class, 'show'])->add($perm('emails.view'));
+        $group->post('/emails/{uuid}/reparse', [EmailsController::class, 'reparse'])->add($perm('emails.manage'));
         $group->post('/emails/{uuid}/delete', [EmailsController::class, 'delete'])->add($perm('emails.manage'));
 
         $group->get('/alerts', [AlertsController::class, 'index'])->add($perm('alerts.view'));

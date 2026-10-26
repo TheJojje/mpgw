@@ -8,10 +8,15 @@ use Mpgw\Http\Middleware\CsrfMiddleware;
 use Mpgw\Http\View\ViewRenderer;
 use Mpgw\Infrastructure\Db\Repository\ApplicationRepository;
 use Mpgw\Infrastructure\Db\Repository\DeletedEmailRepository;
+use Mpgw\Infrastructure\Db\Repository\ExtractedRecordRepository;
 use Mpgw\Infrastructure\Db\Repository\ExtractionRuleRepository;
+use Mpgw\Infrastructure\Db\Repository\IngestLogRepository;
 use Mpgw\Infrastructure\Db\Repository\RawEmailRepository;
+use Mpgw\Infrastructure\Db\Repository\TemplateRepository;
 use Mpgw\Service\AuditLogger;
+use Mpgw\Service\HtmlToTextNormalizer;
 use Mpgw\Service\RuleEngine;
+use Mpgw\Service\TemplateMatcher;
 use Mpgw\Support\FlashMessage;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -28,6 +33,11 @@ final class EmailsController
         private readonly RawEmailRepository $rawEmails,
         private readonly DeletedEmailRepository $deletedEmails,
         private readonly AuditLogger $audit,
+        private readonly TemplateRepository $templates,
+        private readonly TemplateMatcher $templateMatcher,
+        private readonly HtmlToTextNormalizer $normalizer,
+        private readonly ExtractedRecordRepository $records,
+        private readonly IngestLogRepository $ingestLog,
     ) {
     }
 
@@ -55,6 +65,75 @@ final class EmailsController
         FlashMessage::success('Mailet raderades och kommer inte importeras igen.');
 
         return $response->withHeader('Location', '/admin/emails')->withStatus(302);
+    }
+
+    /**
+     * Kor om mall-matchning + extraction_rules mot mailets sparade text och
+     * ersatter det lagrade resultatet. Gor det mojligt att verifiera att en
+     * regelandring ger 100 % traff pa ett delvis matchat mail.
+     */
+    public function reparse(Request $request, Response $response, array $args): Response
+    {
+        $email = $this->rawEmails->findByUuid($args['uuid']);
+        if ($email === null) {
+            return $response->withStatus(404);
+        }
+
+        $data = (array) $request->getParsedBody();
+        if (!CsrfMiddleware::verify($data['csrf_token'] ?? null)) {
+            return $response->withStatus(400);
+        }
+
+        $back = $response->withHeader('Location', '/admin/emails/' . $email['uuid'])->withStatus(302);
+
+        $mailboxStmt = $this->db->prepare('SELECT application_id FROM mailboxes WHERE id = ?');
+        $mailboxStmt->execute([$email['mailbox_id']]);
+        $applicationId = $mailboxStmt->fetchColumn();
+        if ($applicationId === false || $email['normalized_text'] === null) {
+            FlashMessage::error('Mailet saknar mailbox eller text och kan inte parsas om.');
+            return $back;
+        }
+
+        $template = $this->templateMatcher->match(
+            $this->templates->activeForApplication((int) $applicationId),
+            (string) $email['from_address'],
+            (string) $email['subject'],
+        );
+        if ($template === null) {
+            FlashMessage::error('Ingen aktiv mall matchar det här mailet, så det finns inget att parsa om.');
+            return $back;
+        }
+
+        $rules = $this->rules->activeForTemplate((int) $template['id']);
+        $result = $this->ruleEngine->run(
+            $rules,
+            $email['normalized_text'],
+            $this->normalizer->normalize((string) $email['subject'], false),
+        );
+        $this->records->replaceResult((int) $email['id'], (int) $template['id'], $result);
+
+        $userId = !empty($_SESSION['admin_user_id']) ? (int) $_SESSION['admin_user_id'] : null;
+        $this->ingestLog->log(
+            $email['mailbox_id'] !== null ? (int) $email['mailbox_id'] : null,
+            (int) $email['id'],
+            'rule_engine_ran',
+            $result->status . ' (omparsning)',
+        );
+        $this->audit->log('emails', 'reparsed', $userId, 'raw_email', (int) $email['id'], 'Mail parsades om', [
+            'uuid' => $email['uuid'],
+            'template' => $template['name'],
+            'status' => $result->status,
+            'match_rate' => $result->matchRate,
+        ]);
+
+        $msg = sprintf('Omparsat med mallen "%s": träffgrad %d %%.', $template['name'], (int) round($result->matchRate * 100));
+        if ($result->status === 'success') {
+            FlashMessage::success($msg);
+        } else {
+            FlashMessage::error($msg . ' Saknas: ' . implode(', ', array_column(array_filter($result->fields, static fn (array $f): bool => !$f['matched']), 'field_name')));
+        }
+
+        return $back;
     }
 
     public function index(Request $request, Response $response): Response
@@ -126,7 +205,11 @@ final class EmailsController
         if ($record !== null && $record['template_id'] !== null && $email['normalized_text'] !== null) {
             $rules = $this->rules->activeForTemplate((int) $record['template_id']);
             if ($rules !== []) {
-                $engineResult = $this->ruleEngine->run($rules, $email['normalized_text']);
+                $engineResult = $this->ruleEngine->run(
+                    $rules,
+                    $email['normalized_text'],
+                    $this->normalizer->normalize((string) $email['subject'], false),
+                );
                 $fieldMatches = $this->charOffsetFieldsByName($engineResult->fields, $email['normalized_text']);
             }
         }

@@ -11,6 +11,10 @@
         {{ status_chip(record.status == 'success' ? 'ok' : (record.status == 'partial' ? 'warn' : 'danger'), 'Träffgrad ' ~ (record.match_rate * 100)|round ~ '%') }}
     {% endif %}
     {% if can('emails.manage') %}
+        <form method="post" action="/admin/emails/{{ email.uuid }}/reparse" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-small"><svg class="ic"><use href="#ic-history"></use></svg> Parsa om</button>
+        </form>
         <form method="post" action="/admin/emails/{{ email.uuid }}/delete" class="inline-form" data-confirm-delete="mailet? Det tas bort permanent tillsammans med extraherade fält och importeras inte igen.">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-small btn-danger"><svg class="ic"><use href="#ic-trash"></use></svg> Radera</button>

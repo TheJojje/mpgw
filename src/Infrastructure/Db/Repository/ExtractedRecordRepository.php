@@ -21,34 +21,58 @@ final class ExtractedRecordRepository
     {
         $this->db->beginTransaction();
         try {
-            $uuid = $this->generateUuid();
-            $stmt = $this->db->prepare(
-                'INSERT INTO extracted_records (uuid, raw_email_id, template_id, status, match_rate)
-                 VALUES (?, ?, ?, ?, ?)'
-            );
-            $stmt->execute([$uuid, $rawEmailId, $templateId, $result->status, $result->matchRate]);
-            $recordId = (int) $this->db->lastInsertId();
-
-            $fieldStmt = $this->db->prepare(
-                'INSERT INTO extracted_fields (extracted_record_id, field_name, field_value, matched, rule_id)
-                 VALUES (?, ?, ?, ?, ?)'
-            );
-            foreach ($result->fields as $field) {
-                $fieldStmt->execute([
-                    $recordId,
-                    $field['field_name'],
-                    $field['value'],
-                    $field['matched'] ? 1 : 0,
-                    $field['rule_id'],
-                ]);
-            }
-
+            $recordId = $this->insertResult($rawEmailId, $templateId, $result);
             $this->db->commit();
             return $recordId;
         } catch (\Throwable $e) {
             $this->db->rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * Ersatter mailets befintliga record(s) (och deras fält via ON DELETE
+     * CASCADE) med ett nytt resultat, atomart. Anvands vid "Parsa om".
+     */
+    public function replaceResult(int $rawEmailId, ?int $templateId, RuleEngineResult $result): int
+    {
+        $this->db->beginTransaction();
+        try {
+            $this->db->prepare('DELETE FROM extracted_records WHERE raw_email_id = ?')->execute([$rawEmailId]);
+            $recordId = $this->insertResult($rawEmailId, $templateId, $result);
+            $this->db->commit();
+            return $recordId;
+        } catch (\Throwable $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+    }
+
+    private function insertResult(int $rawEmailId, ?int $templateId, RuleEngineResult $result): int
+    {
+        $uuid = $this->generateUuid();
+        $stmt = $this->db->prepare(
+            'INSERT INTO extracted_records (uuid, raw_email_id, template_id, status, match_rate)
+             VALUES (?, ?, ?, ?, ?)'
+        );
+        $stmt->execute([$uuid, $rawEmailId, $templateId, $result->status, $result->matchRate]);
+        $recordId = (int) $this->db->lastInsertId();
+
+        $fieldStmt = $this->db->prepare(
+            'INSERT INTO extracted_fields (extracted_record_id, field_name, field_value, matched, rule_id)
+             VALUES (?, ?, ?, ?, ?)'
+        );
+        foreach ($result->fields as $field) {
+            $fieldStmt->execute([
+                $recordId,
+                $field['field_name'],
+                $field['value'],
+                $field['matched'] ? 1 : 0,
+                $field['rule_id'],
+            ]);
+        }
+
+        return $recordId;
     }
 
     /** @return array<int,array<string,mixed>> recent records med matchrate, for larmberakning */

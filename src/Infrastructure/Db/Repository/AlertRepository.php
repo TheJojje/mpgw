@@ -20,6 +20,34 @@ final class AlertRepository
         return $row === false ? null : $row;
     }
 
+    /**
+     * Skapar ett larm. Anropas t.ex. av MailboxPoller när en mall bara matchar delvis.
+     *
+     * @param array<string,mixed> $details
+     */
+    public function create(
+        string $type,
+        ?int $applicationId,
+        ?int $templateId,
+        ?int $rawEmailId,
+        string $severity = 'warning',
+        array $details = [],
+    ): int {
+        $stmt = $this->db->prepare(
+            'INSERT INTO alerts (type, application_id, template_id, raw_email_id, severity, details_json)
+             VALUES (?, ?, ?, ?, ?, ?)'
+        );
+        $stmt->execute([
+            $type,
+            $applicationId,
+            $templateId,
+            $rawEmailId,
+            $severity,
+            $details === [] ? null : json_encode($details, JSON_UNESCAPED_UNICODE),
+        ]);
+        return (int) $this->db->lastInsertId();
+    }
+
     /** Sätter status till 'acknowledged'. Bara giltigt från 'open'. */
     public function acknowledge(int $id): bool
     {

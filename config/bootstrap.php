@@ -115,6 +115,7 @@ $container->set(MailboxPoller::class, fn (Container $c) => new MailboxPoller(
     $c->get(RuleEngine::class),
     $c->get(AuditLogger::class),
     $c->get(DeletedEmailRepository::class),
+    $c->get(AlertRepository::class),
 ));
 
 // --------------------------------------------------------------------
@@ -205,6 +206,11 @@ $container->set(EmailsController::class, fn (Container $c) => new EmailsControll
     $c->get(RawEmailRepository::class),
     $c->get(DeletedEmailRepository::class),
     $c->get(AuditLogger::class),
+    $c->get(TemplateRepository::class),
+    $c->get(TemplateMatcher::class),
+    $c->get(HtmlToTextNormalizer::class),
+    $c->get(ExtractedRecordRepository::class),
+    $c->get(IngestLogRepository::class),
 ));
 $container->set(AlertsController::class, fn (Container $c) => new AlertsController(
     $c->get(ViewRenderer::class),
