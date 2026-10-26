@@ -1,12 +1,12 @@
 # Mail Parser Gateway (mpgw)
 
-Hamtar mail via IMAP, later en manniska interaktivt bygga extraktionsregler
-genom att markera text i ett exempelmail, kor reglerna automatiskt mot
+Hämtar mail via IMAP, låter en människa interaktivt bygga extraktionsregler
+genom att markera text i ett exempelmail, kör reglerna automatiskt mot
 framtida mail, och exponerar resultatet via ett nyckelskyddat API.
 
-## Forutsattningar
+## Förutsättningar
 
-- PHP 8.2+ med `pdo_mysql`, `sodium`, `imap` (kor `php -m | grep imap` -
+- PHP 8.2+ med `pdo_mysql`, `sodium`, `imap` (kör `php -m | grep imap` -
   saknas den: `sudo apt install php8.3-imap` och starta om webbservern)
 - MySQL/MariaDB
 - Composer
@@ -21,18 +21,18 @@ php -r "echo base64_encode(sodium_crypto_secretbox_keygen()), PHP_EOL;"
 
 php bin/migrate.php   # skapar databasen + alla tabeller
 
-# Skapa en adminanvandare (finns inget UI for detta i MVP):
-php -r "echo password_hash('DITT-LOSENORD', PASSWORD_DEFAULT), PHP_EOL;"
-mysql -u ... -p ... -e "INSERT INTO users (email, password_hash) VALUES ('din@mail.se', '<hash fran ovan>');"
+# Skapa en adminanvändare (finns inget UI för detta i MVP):
+php -r "echo password_hash('DITT-LÖSENORD', PASSWORD_DEFAULT), PHP_EOL;"
+mysql -u ... -p ... -e "INSERT INTO users (email, password_hash) VALUES ('din@mail.se', '<hash från ovan>');"
 ```
 
-## Kora lokalt
+## Köra lokalt
 
 ```bash
 php -S 127.0.0.1:8811 -t public
 ```
 
-Ga till http://127.0.0.1:8811/admin/login.
+Gå till http://127.0.0.1:8811/admin/login.
 
 ## Cron (IMAP-polling)
 
@@ -46,59 +46,59 @@ Ga till http://127.0.0.1:8811/admin/login.
 vendor/bin/phpunit tests/Unit
 ```
 
-## Hamta data via API:t
+## Hämta data via API:t
 
-Varje API-nyckel ar knuten till exakt en applikation (valjs nar nyckeln
-skapas under **Admin > API-nycklar > Ny nyckel**) och kan bara lasa data
-for den applikationen. API:t nas i produktion pa **https://mp.larssons.space/api/v1/...**
-(`bin/fetch-records.php` anvander den URL:en som standard -
-`--base-url=http://127.0.0.1:8811` for att kora mot en lokal dev-server
-istallet).
+Varje API-nyckel är knuten till exakt en applikation (väljs när nyckeln
+skapas under **Admin > API-nycklar > Ny nyckel**) och kan bara läsa data
+för den applikationen. API:t nås i produktion på **https://mp.larssons.space/api/v1/...**
+(`bin/fetch-records.php` använder den URL:en som standard -
+`--base-url=http://127.0.0.1:8811` för att köra mot en lokal dev-server
+istället).
 
-mpgw tar sjalv ingen stallning till vad ett mail *betyder* - varje record
-i API-svaret ar bara rubrik + de falt en mall extraherat, det ar upp till
-klienten att tolka datat utifran sitt eget anvandningsfall (t.ex. avgora
-om ett mail ar en bokning eller en avbokning genom att titta pa rubriken
-eller ett extraherat falt).
+mpgw tar själv ingen ställning till vad ett mail *betyder* - varje record
+i API-svaret är bara rubrik + de fält en mall extraherat, det är upp till
+klienten att tolka datat utifrån sitt eget användningsfall (t.ex. avgöra
+om ett mail är en bokning eller en avbokning genom att titta på rubriken
+eller ett extraherat fält).
 
-`bin/fetch-records.php` ar en fristaende exempelklient (bara cURL, ingen
+`bin/fetch-records.php` är en fristående exempelklient (bara cURL, ingen
 kod delad med applikationen) som paginerar igenom `/api/v1/records` och
 skriver resultatet till fil:
 
 ```bash
-# JSON, inklusive extraherade falt
+# JSON, inklusive extraherade fält
 php bin/fetch-records.php --key=mpgw_xxx --out=records.json --with-fields
 
-# CSV, filtrerat pa status
+# CSV, filtrerat på status
 php bin/fetch-records.php --key=mpgw_xxx --out=records.csv --status=success --with-fields
 ```
 
-Kor `php bin/fetch-records.php` utan argument for full flagg-lista.
+Kör `php bin/fetch-records.php` utan argument för full flagg-lista.
 
-## Sa har bygger du en mall
+## Så här bygger du en mall
 
 1. **Applikationer > Ny applikation** - registrera namn + IMAP-uppgifter
-   for avsandarens mailbox.
-2. Pa applikationssidan: **Ny mall** - ange fran-adress/amne-villkor for
-   att matcha ratt mailtyp (forsta matchande mall i prioritetsordning
-   anvands).
-3. I mallbyggaren: klistra in ett riktigt exempelmail (eller valj ett
-   redan hamtat mail fran listan) och tryck **Normalisera & visa**.
-4. Markera en textbit i den normaliserade texten - du far forslag pa
-   regex-monster (generaliserat/literalt), med live-test mot samma
-   mail. Justera monstret fritt vid behov.
-5. **Spara regel.** Upprepa for alla falt du vill extrahera.
-6. Nar cron kor `bin/poll-mailboxes.php` matchas nya mail mot mallen och
-   fatlen sparas automatiskt i `extracted_fields`.
+   för avsändarens mailbox.
+2. På applikationssidan: **Ny mall** - ange från-adress/ämne-villkor för
+   att matcha rätt mailtyp (första matchande mall i prioritetsordning
+   används).
+3. I mallbyggaren: klistra in ett riktigt exempelmail (eller välj ett
+   redan hämtat mail från listan) och tryck **Normalisera & visa**.
+4. Markera en textbit i den normaliserade texten - du får förslag på
+   regex-mönster (generaliserat/literalt), med live-test mot samma
+   mail. Justera mönstret fritt vid behov.
+5. **Spara regel.** Upprepa för alla fält du vill extrahera.
+6. När cron kör `bin/poll-mailboxes.php` matchas nya mail mot mallen och
+   fälten sparas automatiskt i `extracted_fields`.
 
-## MVP-omfang (nuvarande status)
+## MVP-omfång (nuvarande status)
 
 Byggt: applikations/mailbox-registrering (krypterade IMAP-uppgifter), IMAP-
-polling, ratt-mail-lagring, HTML->text-normalisering, mallmatchning,
-interaktiv mallbyggare med regex-forslag och live-test, regelmotor,
-mailhistorik, nyckelskyddat las-API med scopes och rate limiting.
+polling, rått-mail-lagring, HTML->text-normalisering, mallmatchning,
+interaktiv mallbyggare med regex-förslag och live-test, regelmotor,
+mailhistorik, nyckelskyddat läs-API med scopes och rate limiting.
 
-**Inte byggt an** (se planen, iteration 2-4): automatiska format-change-
+**Inte byggt än** (se planen, iteration 2-4): automatiska format-change-
 larm (tabellerna `alerts`/`ingest_log` finns och loggas till, men ingen
-`AlertEvaluator`/`AlertNotifier` kor an), GDPR-purge av gamla rattmail,
+`AlertEvaluator`/`AlertNotifier` kör än), GDPR-purge av gamla råmail,
 multi-user-roller.
