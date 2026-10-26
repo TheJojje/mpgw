@@ -12,6 +12,7 @@ use Mpgw\Infrastructure\Db\Repository\MailboxRepository;
 use Mpgw\Infrastructure\Imap\WebklexImapClient;
 use Mpgw\Service\AuditLogger;
 use Mpgw\Service\CredentialCipher;
+use Mpgw\Service\MailboxPoller;
 use Mpgw\Support\FlashMessage;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -31,6 +32,7 @@ final class MailboxesController
         private readonly WebklexImapClient $imapClient,
         private readonly IngestLogRepository $ingestLog,
         private readonly AuditLogger $audit,
+        private readonly MailboxPoller $poller,
     ) {
     }
 
@@ -179,6 +181,36 @@ final class MailboxesController
             'success' => true,
             'message' => 'Anslutningen lyckades - host, port, inloggning och mapp fungerar.',
         ]);
+    }
+
+    /** Manuell pollning ("Polla nu"). */
+    public function poll(Request $request, Response $response, array $args): Response
+    {
+        $mailboxId = (int) $args['id'];
+        $mailbox = $this->mailboxes->find($mailboxId);
+        if ($mailbox === null) {
+            return $response->withStatus(404);
+        }
+
+        $data = (array) $request->getParsedBody();
+        if (!CsrfMiddleware::verify($data['csrf_token'] ?? null)) {
+            return $response->withStatus(400);
+        }
+
+        $back = $response->withHeader('Location', '/admin/applications/' . $mailbox['application_id'] . '#mailboxes')->withStatus(302);
+
+        try {
+            $count = $this->poller->pollMailbox($mailboxId);
+        } catch (\Throwable $e) {
+            $this->audit->log('mailboxes', 'poll_failed', $this->currentUserId(), 'mailbox', $mailboxId, "Manuell pollning av {$mailbox['username']} misslyckades", ['error' => $e->getMessage()], level: 'warning');
+            FlashMessage::error('Pollningen misslyckades: ' . $e->getMessage());
+            return $back;
+        }
+
+        $this->audit->log('mailboxes', 'polled_manually', $this->currentUserId(), 'mailbox', $mailboxId, "Mailbox {$mailbox['username']} pollades manuellt", ['emails_fetched' => $count]);
+        FlashMessage::success($count === 0 ? 'Pollningen klar – inga nya mail.' : "Pollningen klar – {$count} " . ($count === 1 ? 'nytt mail' : 'nya mail') . ' hämtades.');
+
+        return $back;
     }
 
     public function delete(Request $request, Response $response, array $args): Response

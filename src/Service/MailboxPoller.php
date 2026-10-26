@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Mpgw\Service;
 
 use Mpgw\Infrastructure\Db\Repository\AlertRepository;
+use Mpgw\Infrastructure\Db\Repository\ApplicationRepository;
 use Mpgw\Infrastructure\Db\Repository\DeletedEmailRepository;
 use Mpgw\Infrastructure\Db\Repository\ExtractedRecordRepository;
 use Mpgw\Infrastructure\Db\Repository\ExtractionRuleRepository;
@@ -45,6 +46,7 @@ final class MailboxPoller
         private readonly DeletedEmailRepository $deletedEmails,
         private readonly AlertRepository $alerts,
         private readonly ThreadService $threads,
+        private readonly ApplicationRepository $applications,
     ) {
     }
 
@@ -69,6 +71,31 @@ final class MailboxPoller
             'emails_fetched' => $fetched,
             'errors' => $errors,
         ];
+    }
+
+    /**
+     * Pollar EN aktiv mailbox direkt (manuell "Polla nu" i admin-UI:t).
+     * Samma flode som cron: duplicerade/raderade mail hoppas over via
+     * content_hash/tombstones.
+     *
+     * @return int antal hamtade mail
+     * @throws \RuntimeException om mailboxen inte finns/inte ar aktiv, eller IMAP-fel
+     */
+    public function pollMailbox(int $mailboxId): int
+    {
+        foreach ($this->mailboxes->allActiveWithApplication() as $mailbox) {
+            if ((int) $mailbox['id'] !== $mailboxId) {
+                continue;
+            }
+            try {
+                return $this->pollOne($mailbox);
+            } catch (Throwable $e) {
+                $this->ingestLog->log($mailboxId, null, 'imap_error', $e->getMessage());
+                throw new \RuntimeException($e->getMessage(), 0, $e);
+            }
+        }
+
+        throw new \RuntimeException('Mailboxen är inte aktiv eller tillhör en inaktiv applikation.');
     }
 
     private function pollOne(array $mailbox): int
@@ -185,7 +212,7 @@ final class MailboxPoller
         $this->ingestLog->log($mailboxId, $rawEmailId, 'rule_engine_ran', $result->status);
 
         // Delvis matchning betyder oftast att avsandaren andrat mailformatet.
-        if ($result->status === 'partial') {
+        if ($result->status === 'partial' && (int) ($this->applications->find($applicationId)['alert_on_partial'] ?? 1) === 1) {
             $this->alerts->create(
                 'low_match_rate',
                 $applicationId,

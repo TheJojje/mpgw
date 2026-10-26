@@ -9,6 +9,7 @@ use Mpgw\Http\View\ViewRenderer;
 use Mpgw\Infrastructure\Db\Repository\ApplicationRepository;
 use Mpgw\Infrastructure\Db\Repository\MailboxRepository;
 use Mpgw\Infrastructure\Db\Repository\TemplateRepository;
+use Mpgw\Service\AlertPresenter;
 use Mpgw\Service\AuditLogger;
 use Mpgw\Service\CredentialCipher;
 use Mpgw\Service\ThreadService;
@@ -79,7 +80,7 @@ final class ApplicationsController
 
         $applicationId = $this->applications->create(
             $name,
-            $data['description'] ?: null,
+            ($data['description'] ?? null) ?: null,
             $data['alert_email'] ?: null,
             $data['alert_webhook_url'] ?: null,
             $retentionDays,
@@ -101,7 +102,7 @@ final class ApplicationsController
 
         $this->audit->log('applications', 'created', $this->currentUserId(), 'application', $applicationId, "Applikation {$name} skapades", [
             'name' => $name,
-            'description' => $data['description'] ?: null,
+            'description' => ($data['description'] ?? null) ?: null,
             'alert_email' => $data['alert_email'] ?: null,
             'retention_days' => $retentionDays,
             'raw_email_retention_days' => $rawEmailRetentionDays,
@@ -112,14 +113,108 @@ final class ApplicationsController
         return $response->withHeader('Location', '/admin/applications/' . $applicationId)->withStatus(302);
     }
 
+    /** Visa och redigera ar en och samma sida (flikar); den gamla adressen leder dit. */
     public function editForm(Request $request, Response $response, array $args): Response
     {
-        $application = $this->applications->find((int) $args['id']);
-        if ($application === null) {
-            return $response->withStatus(404);
-        }
+        return $response->withHeader('Location', '/admin/applications/' . (int) $args['id'] . '#settings')->withStatus(302);
+    }
 
-        return $this->view->render($request, $response, 'applications/edit.twig', ['application' => $application]);
+    /**
+     * Data till redigeringssidan: overblick, mailboxar och underlag for
+     * tradinstallningarna (faltnamn/varden att foresla + sammanfattning).
+     *
+     * @return array<string,mixed>
+     */
+    private function editViewData(array $application, ?string $error = null, bool $showAllTemplates = false): array
+    {
+        $applicationId = (int) $application['id'];
+
+        $mailboxStmt = $this->db->prepare(
+            "SELECT m.*,
+                (SELECT il.event FROM ingest_log il WHERE il.mailbox_id = m.id ORDER BY il.created_at DESC LIMIT 1) AS last_ingest_event
+             FROM mailboxes m WHERE m.application_id = ?"
+        );
+        $mailboxStmt->execute([$applicationId]);
+
+        $templateCount = $this->db->prepare('SELECT COUNT(*) FROM templates WHERE application_id = ?');
+        $templateCount->execute([$applicationId]);
+
+        $mailCount = $this->db->prepare(
+            'SELECT COUNT(*) FROM raw_emails re JOIN mailboxes mb ON mb.id = re.mailbox_id
+             WHERE mb.application_id = ? AND re.fetched_at >= (NOW() - INTERVAL 30 DAY)'
+        );
+        $mailCount->execute([$applicationId]);
+
+        // Faltnamn som finns i applikationens mallar - foreslas som nyckel-/handelsefalt.
+        $fieldNames = $this->db->prepare(
+            'SELECT DISTINCT r.field_name FROM extraction_rules r JOIN templates t ON t.id = r.template_id
+             WHERE t.application_id = ? AND r.is_active = 1 ORDER BY r.field_name'
+        );
+        $fieldNames->execute([$applicationId]);
+
+        // Varden som faktiskt forekommit per falt (bara falt med fa olika varden) - foreslas som oppna/stang-varden.
+        $valueStmt = $this->db->prepare(
+            'SELECT f.field_name, f.field_value
+             FROM extracted_fields f
+             JOIN extracted_records er ON er.id = f.extracted_record_id
+             JOIN templates t ON t.id = er.template_id
+             WHERE t.application_id = ? AND f.matched = 1 AND f.field_value IS NOT NULL
+             GROUP BY f.field_name, f.field_value'
+        );
+        $valueStmt->execute([$applicationId]);
+        $fieldValues = [];
+        foreach ($valueStmt->fetchAll() as $row) {
+            $fieldValues[$row['field_name']][] = $row['field_value'];
+        }
+        $fieldValues = array_filter($fieldValues, static fn (array $values): bool => count($values) <= 12);
+
+        $templatesStmt = $this->db->prepare(
+            'SELECT t.*,
+                (SELECT COUNT(*) FROM extraction_rules r WHERE r.template_id = t.id AND r.is_active = 1) AS rule_count,
+                (SELECT AVG(er.match_rate) FROM extracted_records er WHERE er.template_id = t.id) AS avg_match_rate
+             FROM templates t WHERE t.application_id = ?'
+            . ($showAllTemplates ? '' : ' AND t.is_active = 1') .
+            ' ORDER BY t.priority ASC'
+        );
+        $templatesStmt->execute([$applicationId]);
+
+        $alertStmt = $this->db->prepare(
+            "SELECT a.*, re.uuid AS raw_email_uuid, re.subject AS raw_email_subject, t.name AS template_name
+             FROM alerts a
+             LEFT JOIN raw_emails re ON re.id = a.raw_email_id
+             LEFT JOIN templates t ON t.id = a.template_id
+             WHERE a.application_id = ? AND a.status = 'open'
+             ORDER BY a.created_at DESC LIMIT 20"
+        );
+        $alertStmt->execute([$applicationId]);
+        $appAlerts = array_map(static fn (array $a): array => $a + AlertPresenter::describe($a), $alertStmt->fetchAll());
+
+        $rateStmt = $this->db->prepare(
+            'SELECT AVG(er.match_rate) FROM extracted_records er JOIN templates t ON t.id = er.template_id WHERE t.application_id = ?'
+        );
+        $rateStmt->execute([$applicationId]);
+        $avgRate = $rateStmt->fetchColumn();
+
+        $polled = $this->db->prepare('SELECT MAX(last_polled_at) FROM mailboxes WHERE application_id = ?');
+        $polled->execute([$applicationId]);
+        $lastPolled = $polled->fetchColumn();
+
+        return [
+            'application' => $application,
+            'error' => $error,
+            'templates' => $templatesStmt->fetchAll(),
+            'show_all_templates' => $showAllTemplates,
+            'app_alerts' => $appAlerts,
+            'avg_match_rate' => $avgRate !== null && $avgRate !== false ? (int) round(((float) $avgRate) * 100) : null,
+            // last_polled_at skrivs av MySQL (NOW(), serverns lokala tid) - ingen tidszonskonvertering.
+            'last_polled' => $lastPolled ? substr((string) $lastPolled, 0, 16) : null,
+            'mailboxes' => $mailboxStmt->fetchAll(),
+            'template_count' => (int) $templateCount->fetchColumn(),
+            'mail_count_30d' => (int) $mailCount->fetchColumn(),
+            'field_names' => $fieldNames->fetchAll(PDO::FETCH_COLUMN),
+            'field_values' => $fieldValues,
+            'thread_summary' => $this->threads->summaryForApplication($applicationId),
+        ];
     }
 
     public function update(Request $request, Response $response, array $args): Response
@@ -145,33 +240,55 @@ final class ApplicationsController
                 return $response->withHeader('Location', '/admin/applications?error=name_required')->withStatus(302);
             }
 
-            return $this->view->render($request, $response->withStatus(422), 'applications/edit.twig', [
-                'application' => $application,
-                'error' => 'Namn krävs.',
-            ]);
+            return $this->view->render($request, $response->withStatus(422), 'applications/show.twig', $this->editViewData($application, 'Namn krävs.'));
         }
 
         $retentionDays = ($data['retention_days'] ?? '') !== '' ? (int) $data['retention_days'] : null;
         $rawEmailRetentionDays = ($data['raw_email_retention_days'] ?? '') !== '' ? (int) $data['raw_email_retention_days'] : null;
+        $alertEmail = ($data['alert_email'] ?? null) ?: null;
+        $alertWebhookUrl = ($data['alert_webhook_url'] ?? null) ?: null;
+
+        // Det fullstandiga redigeringsformularet (reglage) skickar settings_form;
+        // inline-formularet i listan gor det inte och beter sig som forut.
+        $fullForm = isset($data['settings_form']);
+        if ($fullForm) {
+            $alertEmail = !empty($data['alert_email_on']) ? (trim((string) ($data['alert_email'] ?? '')) ?: null) : null;
+            $alertWebhookUrl = !empty($data['alert_webhook_on']) ? (trim((string) ($data['alert_webhook_url'] ?? '')) ?: null) : null;
+            $retentionDays = !empty($data['retention_on']) ? max(1, (int) ($data['retention_days'] ?? 90)) : null;
+            $rawEmailRetentionDays = !empty($data['raw_retention_on']) ? max(1, (int) ($data['raw_email_retention_days'] ?? 90)) : null;
+        }
 
         $this->applications->update(
             $applicationId,
             $name,
-            $data['description'] ?: null,
-            $data['alert_email'] ?: null,
-            $data['alert_webhook_url'] ?: null,
+            ($data['description'] ?? null) ?: null,
+            $alertEmail,
+            $alertWebhookUrl,
             $retentionDays,
             $rawEmailRetentionDays,
         );
 
+        if ($fullForm) {
+            $this->applications->updateAlertFlags($applicationId, !empty($data['alert_on_partial']), !empty($data['alert_on_thread_anomaly']));
+
+            $wantActive = !empty($data['is_active']);
+            if ($wantActive && !(int) $application['is_active']) {
+                $this->applications->reactivate($applicationId);
+            } elseif (!$wantActive && (int) $application['is_active']) {
+                $this->applications->deactivate($applicationId);
+            }
+        }
+
         // Tradinstallningar skickas bara fran den fristaende edit-sidan (inte
         // fran inline-formularet i listan) - rora dem inte om de saknas.
         if (isset($data['thread_config'])) {
+            // Reglaget "Anvand tradar" av = ingen tradkonfiguration.
+            $threadsOn = !$fullForm || !empty($data['thread_enabled']);
             $threadConfig = [
-                'thread_key_fields' => $this->csvList($data['thread_key_fields'] ?? ''),
-                'thread_event_field' => trim((string) ($data['thread_event_field'] ?? '')) ?: null,
-                'thread_open_values' => $this->csvList($data['thread_open_values'] ?? ''),
-                'thread_close_values' => $this->csvList($data['thread_close_values'] ?? ''),
+                'thread_key_fields' => $threadsOn ? $this->csvList($data['thread_key_fields'] ?? '') : null,
+                'thread_event_field' => $threadsOn ? (trim((string) ($data['thread_event_field'] ?? '')) ?: null) : null,
+                'thread_open_values' => $threadsOn ? $this->csvList($data['thread_open_values'] ?? '') : null,
+                'thread_close_values' => $threadsOn ? $this->csvList($data['thread_close_values'] ?? '') : null,
             ];
             if ($threadConfig != array_intersect_key($application, $threadConfig)) {
                 $this->applications->updateThreading($applicationId, $threadConfig);
@@ -182,9 +299,9 @@ final class ApplicationsController
 
         $this->audit->log('applications', 'updated', $this->currentUserId(), 'application', $applicationId, "Applikation {$name} uppdaterades", [
             'name' => $name,
-            'description' => $data['description'] ?: null,
-            'alert_email' => $data['alert_email'] ?: null,
-            'alert_webhook_url' => $data['alert_webhook_url'] ?: null,
+            'description' => ($data['description'] ?? null) ?: null,
+            'alert_email' => $alertEmail,
+            'alert_webhook_url' => $alertWebhookUrl,
             'retention_days' => $retentionDays,
             'raw_email_retention_days' => $rawEmailRetentionDays,
         ]);
@@ -193,7 +310,7 @@ final class ApplicationsController
         // edit-sidan behaller sitt vanliga beteende (tillbaka till show-sidan).
         $redirectTo = ($data['redirect_to'] ?? null) === 'list'
             ? '/admin/applications'
-            : '/admin/applications/' . $applicationId;
+            : '/admin/applications/' . $applicationId . (preg_match('/^[a-z]+$/', (string) ($data['return_tab'] ?? '')) === 1 ? '#' . $data['return_tab'] : '');
 
         FlashMessage::success("Applikationen {$name} uppdaterades.");
 
@@ -250,39 +367,16 @@ final class ApplicationsController
 
     public function show(Request $request, Response $response, array $args): Response
     {
-        $applicationId = (int) $args['id'];
-        $application = $this->applications->find($applicationId);
+        $application = $this->applications->find((int) $args['id']);
         if ($application === null) {
             return $response->withStatus(404);
         }
 
-        // Samma "visa=alla"-monster som applications/index.twig: bara aktiva
-        // mallar visas som standard, en inaktiverad mall ska kannas borttagen.
+        // Samma "visa=alla"-monster som forut: bara aktiva mallar visas som
+        // standard, en inaktiverad mall ska kannas borttagen.
         $showAllTemplates = ($request->getQueryParams()['visa'] ?? null) === 'alla';
 
-        $stmt = $this->db->prepare(
-            "SELECT m.*,
-                (SELECT il.event FROM ingest_log il WHERE il.mailbox_id = m.id ORDER BY il.created_at DESC LIMIT 1) AS last_ingest_event
-             FROM mailboxes m WHERE m.application_id = ?"
-        );
-        $stmt->execute([$applicationId]);
-
-        $templatesStmt = $this->db->prepare(
-            'SELECT t.*,
-                (SELECT COUNT(*) FROM extraction_rules r WHERE r.template_id = t.id) AS rule_count,
-                (SELECT AVG(er.match_rate) FROM extracted_records er WHERE er.template_id = t.id) AS avg_match_rate
-             FROM templates t WHERE t.application_id = ?'
-            . ($showAllTemplates ? '' : ' AND t.is_active = 1') .
-            ' ORDER BY t.priority ASC'
-        );
-        $templatesStmt->execute([$applicationId]);
-
-        return $this->view->render($request, $response, 'applications/show.twig', [
-            'application' => $application,
-            'mailboxes' => $stmt->fetchAll(),
-            'templates' => $templatesStmt->fetchAll(),
-            'show_all_templates' => $showAllTemplates,
-        ]);
+        return $this->view->render($request, $response, 'applications/show.twig', $this->editViewData($application, null, $showAllTemplates));
     }
 
     public function deleteTemplate(Request $request, Response $response, array $args): Response

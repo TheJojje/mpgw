@@ -68,6 +68,12 @@ final class ApplicationRepository
         return $stmt->rowCount() > 0;
     }
 
+    public function updateAlertFlags(int $id, bool $onPartial, bool $onThreadAnomaly): void
+    {
+        $this->db->prepare('UPDATE applications SET alert_on_partial = ?, alert_on_thread_anomaly = ? WHERE id = ?')
+            ->execute([$onPartial ? 1 : 0, $onThreadAnomaly ? 1 : 0, $id]);
+    }
+
     /** @param array{thread_key_fields:?string,thread_event_field:?string,thread_open_values:?string,thread_close_values:?string} $config */
     public function updateThreading(int $id, array $config): void
     {

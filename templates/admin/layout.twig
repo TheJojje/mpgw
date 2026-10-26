@@ -43,7 +43,7 @@
 </svg>
 
 <div class="shell">
-    <header class="topbar panel">
+    <aside class="sidebar">
         <a class="brand" href="/admin">
             <div class="brand-mark">MP</div>
             <div class="brand-text">
@@ -52,57 +52,33 @@
             </div>
         </a>
 
-        <div class="topbar-right">
-            <button class="icon-btn theme-toggle" id="themeToggle" type="button" title="Växla tema" aria-label="Växla mellan ljust och mörkt läge">
-                <svg class="ic ic-moon"><use href="#ic-moon"></use></svg>
-                <svg class="ic ic-sun"><use href="#ic-sun"></use></svg>
-            </button>
-            <form method="post" action="/admin/logout" class="logout-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit"><svg class="ic"><use href="#ic-logout"></use></svg> Logga ut</button>
-            </form>
-        </div>
-    </header>
-
-    <div class="body-row">
-        <nav class="sidebar panel">
-            {% if current_user %}
-            <div class="sidebar-user">
-                <div class="sidebar-user-avatar">{{ current_user.name|slice(0, 1)|upper }}</div>
-                <div class="sidebar-user-info">
-                    <div class="sidebar-user-name">{{ current_user.name }}</div>
-                    <div class="sidebar-user-role">{{ current_user.role_names|join(', ')|default('Ingen roll', true) }}</div>
-                </div>
-            </div>
-            {% endif %}
-
-            <div class="sidebar-section">Översikt</div>
-            <a href="/admin" class="nav-link-item{% if current_path == '/admin' %} active{% endif %}">
-                <svg class="ic"><use href="#ic-lightning"></use></svg> Översikt
+        <nav class="nav" aria-label="Huvudmeny">
+            <a href="/admin" class="nav-link-item{% if current_path == '/admin' %} active{% endif %}"{% if current_path == '/admin' %} aria-current="page"{% endif %}>
+                <svg class="ic" aria-hidden="true"><use href="#ic-lightning"></use></svg> Översikt
             </a>
             {% if can('applications.view') %}
-            <a href="/admin/applications" class="nav-link-item{% if current_path starts with '/admin/applications' %} active{% endif %}">
-                <svg class="ic"><use href="#ic-grid"></use></svg> Applikationer
+            <a href="/admin/applications" class="nav-link-item{% if current_path starts with '/admin/applications' or current_path starts with '/admin/templates' or current_path starts with '/admin/mailboxes' %} active{% endif %}">
+                <svg class="ic" aria-hidden="true"><use href="#ic-grid"></use></svg> Applikationer
             </a>
             {% endif %}
             {% if can('emails.view') %}
             <a href="/admin/emails" class="nav-link-item{% if current_path starts with '/admin/emails' %} active{% endif %}">
-                <svg class="ic"><use href="#ic-mail"></use></svg> Mailhistorik
+                <svg class="ic" aria-hidden="true"><use href="#ic-mail"></use></svg> Mailhistorik
             </a>
             {% endif %}
             {% if can('alerts.view') %}
             <a href="/admin/alerts" class="nav-link-item{% if current_path starts with '/admin/alerts' %} active{% endif %}">
-                <svg class="ic"><use href="#ic-alert"></use></svg> Larm
+                <svg class="ic" aria-hidden="true"><use href="#ic-alert"></use></svg> Larm
                 {% if sidebar_open_alerts_count > 0 %}<span class="count-badge">{{ sidebar_open_alerts_count }}</span>{% endif %}
             </a>
             {% endif %}
             {% if can('api_keys.view') %}
             <a href="/admin/api-keys" class="nav-link-item{% if current_path starts with '/admin/api-keys' %} active{% endif %}">
-                <svg class="ic"><use href="#ic-key"></use></svg> API-nycklar
+                <svg class="ic" aria-hidden="true"><use href="#ic-key"></use></svg> API-nycklar
             </a>
             {% endif %}
             <a href="/admin/help" class="nav-link-item{% if current_path starts with '/admin/help' %} active{% endif %}">
-                <svg class="ic"><use href="#ic-info"></use></svg> Hjälp &amp; API-dokumentation
+                <svg class="ic" aria-hidden="true"><use href="#ic-info"></use></svg> Hjälp &amp; API
             </a>
 
             {% if can('users.view') or can('roles.view') or can('logs.view') %}
@@ -110,25 +86,45 @@
             {% endif %}
             {% if can('users.view') %}
             <a href="/admin/users" class="nav-link-item{% if current_path starts with '/admin/users' %} active{% endif %}">
-                <svg class="ic"><use href="#ic-users"></use></svg> Användare
+                <svg class="ic" aria-hidden="true"><use href="#ic-users"></use></svg> Användare
             </a>
             {% endif %}
             {% if can('roles.view') %}
             <a href="/admin/roles" class="nav-link-item{% if current_path starts with '/admin/roles' %} active{% endif %}">
-                <svg class="ic"><use href="#ic-shield"></use></svg> Roller
+                <svg class="ic" aria-hidden="true"><use href="#ic-shield"></use></svg> Roller
             </a>
             {% endif %}
             {% if can('logs.view') %}
             <a href="/admin/logs" class="nav-link-item{% if current_path starts with '/admin/logs' %} active{% endif %}">
-                <svg class="ic"><use href="#ic-history"></use></svg> Logg
+                <svg class="ic" aria-hidden="true"><use href="#ic-history"></use></svg> Logg
             </a>
             {% endif %}
         </nav>
 
-        <main class="content">
+        <div class="sidebar-foot">
+            {% if current_user %}
+            <div class="sidebar-user-avatar" aria-hidden="true">{{ current_user.name|slice(0, 1)|upper }}</div>
+            <div class="sidebar-user-info">
+                <div class="sidebar-user-name">{{ current_user.name }}</div>
+                <div class="sidebar-user-role">{{ current_user.role_names|join(', ')|default('Ingen roll', true) }}</div>
+            </div>
+            {% endif %}
+            <button class="icon-btn theme-toggle" id="themeToggle" type="button" title="Växla tema" aria-label="Växla mellan ljust och mörkt läge">
+                <svg class="ic ic-moon" aria-hidden="true"><use href="#ic-moon"></use></svg>
+                <svg class="ic ic-sun" aria-hidden="true"><use href="#ic-sun"></use></svg>
+            </button>
+            <form method="post" action="/admin/logout" class="logout-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="icon-btn" title="Logga ut" aria-label="Logga ut"><svg class="ic" aria-hidden="true"><use href="#ic-logout"></use></svg></button>
+            </form>
+        </div>
+    </aside>
+
+    <main class="content">
+        <div class="content-inner">
             {% block content %}{% endblock %}
-        </main>
-    </div>
+        </div>
+    </main>
 </div>
 
 <script>

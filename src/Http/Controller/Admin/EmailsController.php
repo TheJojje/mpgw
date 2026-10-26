@@ -148,33 +148,56 @@ final class EmailsController
     {
         $params = $request->getQueryParams();
         $search = trim((string) ($params['q'] ?? ''));
-        $status = in_array($params['status'] ?? null, ['success', 'partial', 'failed'], true) ? $params['status'] : null;
+        $status = in_array($params['status'] ?? null, ['success', 'partial', 'failed', 'anomaly'], true) ? $params['status'] : null;
         $applicationId = ($params['application'] ?? '') !== '' ? (int) $params['application'] : null;
 
-        $where = [];
-        $args = [];
+        // Gemensamma filter (utan status) - anvands for bade listan och antalen pa segmentknapparna.
+        $baseWhere = [];
+        $baseArgs = [];
         if ($search !== '') {
-            $where[] = '(re.from_address LIKE ? OR re.subject LIKE ?)';
-            $args[] = '%' . $search . '%';
-            $args[] = '%' . $search . '%';
-        }
-        if ($status !== null) {
-            $where[] = 'er.status = ?';
-            $args[] = $status;
+            $baseWhere[] = '(re.from_address LIKE ? OR re.subject LIKE ?)';
+            $baseArgs[] = '%' . $search . '%';
+            $baseArgs[] = '%' . $search . '%';
         }
         if ($applicationId !== null) {
-            $where[] = 'mb.application_id = ?';
-            $args[] = $applicationId;
+            $baseWhere[] = 'mb.application_id = ?';
+            $baseArgs[] = $applicationId;
         }
-        $whereSql = $where === [] ? '' : ' WHERE ' . implode(' AND ', $where);
+        $baseSql = $baseWhere === [] ? '' : ' AND ' . implode(' AND ', $baseWhere);
 
-        $stmt = $this->db->prepare(
-            'SELECT re.*, er.status, er.thread_anomaly
+        $countStmt = $this->db->prepare(
+            "SELECT COUNT(*) AS total,
+                    SUM(er.status = 'success') AS success,
+                    SUM(er.status = 'partial') AS partial,
+                    SUM(er.status = 'failed' OR er.status IS NULL) AS failed,
+                    SUM(er.thread_anomaly IS NOT NULL) AS anomaly
              FROM raw_emails re
              LEFT JOIN extracted_records er ON er.raw_email_id = re.id
-             LEFT JOIN mailboxes mb ON mb.id = re.mailbox_id'
-            . $whereSql .
-            ' ORDER BY re.fetched_at DESC LIMIT 100'
+             LEFT JOIN mailboxes mb ON mb.id = re.mailbox_id
+             WHERE 1=1" . $baseSql
+        );
+        $countStmt->execute($baseArgs);
+        $counts = array_map('intval', $countStmt->fetch() ?: []);
+
+        $where = $baseSql;
+        $args = $baseArgs;
+        if ($status === 'anomaly') {
+            $where .= ' AND er.thread_anomaly IS NOT NULL';
+        } elseif ($status === 'failed') {
+            $where .= " AND (er.status = 'failed' OR er.status IS NULL)";
+        } elseif ($status !== null) {
+            $where .= ' AND er.status = ?';
+            $args[] = $status;
+        }
+
+        $stmt = $this->db->prepare(
+            'SELECT re.*, er.status, er.thread_anomaly, er.thread_event, er.thread_no, er.thread_key,
+                    (SELECT COUNT(*) FROM extracted_records e2 WHERE e2.thread_key = er.thread_key AND e2.thread_no = er.thread_no) AS thread_size
+             FROM raw_emails re
+             LEFT JOIN extracted_records er ON er.raw_email_id = re.id
+             LEFT JOIN mailboxes mb ON mb.id = re.mailbox_id
+             WHERE 1=1' . $where .
+            ' ORDER BY COALESCE(re.received_at, re.fetched_at) DESC LIMIT 100'
         );
         $stmt->execute($args);
 
@@ -191,6 +214,7 @@ final class EmailsController
             'status_filter' => $status,
             'application_filter' => $applicationId,
             'applications' => $this->applications->allActive(),
+            'counts' => $counts,
         ]);
     }
 

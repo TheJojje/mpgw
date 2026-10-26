@@ -1,120 +1,412 @@
 {% extends "layout.twig" %}
 {% block content %}
-<div class="breadcrumb">
-    <a href="/admin/applications">Applikationer</a>
-    <span class="sep">/</span>
-    <span class="current">{{ application.name }}</span>
-</div>
-<div class="page-header">
-    <h1>{{ application.name }}</h1>
-    <a class="btn" href="/admin/applications/{{ application.id }}/edit"><svg class="ic"><use href="#ic-edit"></use></svg> Redigera applikation</a>
-</div>
+{% set openValues = (application.thread_open_values ?? '')|split(',')|map(v => v|trim)|filter(v => v != '') %}
+{% set closeValues = (application.thread_close_values ?? '')|split(',')|map(v => v|trim)|filter(v => v != '') %}
+{% set keyFields = (application.thread_key_fields ?? '')|split(',')|map(v => v|trim)|filter(v => v != '') %}
+{% set threadsOn = keyFields|length > 0 %}
+{% set eventField = application.thread_event_field ?: 'event_type' %}
+{% set fieldNames = field_names %}
+{% if eventField not in fieldNames %}{% set fieldNames = fieldNames|merge([eventField]) %}{% endif %}
+{% set canManage = can('applications.manage') %}
 
-<h2>Mailboxar</h2>
-{% if mailboxes|length > 0 %}
-<div class="table-wrap" style="margin-bottom:26px;">
-    <table class="table">
-        <thead><tr><th>Host</th><th>Användarnamn</th><th>Senast pollad</th><th>Status</th><th class="col-right">Åtgärder</th></tr></thead>
-        <tbody>
-        {% for mailbox in mailboxes %}
-            <tr>
-                <td><code>{{ mailbox.host }}:{{ mailbox.port }}</code></td>
-                <td>{{ mailbox.username }}</td>
-                <td class="tabular muted">{{ mailbox.last_polled_at|default('Aldrig') }}</td>
-                <td>
-                    {% if not mailbox.is_active %}
-                        {{ status_chip('neutral', 'Inaktiv') }}
-                    {% elseif mailbox.last_ingest_event == 'imap_error' %}
-                        {{ status_chip('danger', 'Fel vid pollning') }}
-                    {% else %}
-                        {{ status_chip('ok', 'Aktiv') }}
-                    {% endif %}
-                </td>
-                <td class="col-right"><a class="btn btn-small" href="/admin/mailboxes/{{ mailbox.id }}/edit"><svg class="ic"><use href="#ic-edit"></use></svg> Redigera</a></td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-</div>
-{% else %}
-    <div class="panel" style="margin-bottom:26px;">
-        <div class="empty-state">
-            <div class="empty-icon"><svg class="ic-lg"><use href="#ic-server"></use></svg></div>
-            <h3>Inga mailboxar än</h3>
-            <p>Redigera applikationen för att lägga till en IMAP-mailbox.</p>
+<div class="stack">
+    <div>
+        <div class="breadcrumb">
+            <a href="/admin/applications">Applikationer</a>
+            <span class="sep">/</span>
+            <span class="current">{{ application.name }}</span>
+        </div>
+        <div class="page-header" style="margin:6px 0 0;">
+            <div>
+                <h1 style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">{{ application.name }} {% if application.is_active %}{{ status_chip('ok', 'Pollning aktiv') }}{% else %}{{ status_chip('neutral', 'Inaktiv') }}{% endif %}</h1>
+                {% if application.description %}<p class="page-lead">{{ application.description }}</p>{% endif %}
+            </div>
+            <a class="btn" href="/admin/emails?application={{ application.id }}">Visa mailhistorik</a>
         </div>
     </div>
-{% endif %}
 
-<div class="page-header">
-    <h2 style="margin:0;">Mallar</h2>
-    <a class="btn btn-primary" href="/admin/applications/{{ application.id }}/templates/new"><svg class="ic"><use href="#ic-plus"></use></svg> Ny mall</a>
-</div>
-<div class="table-toolbar">
-    <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--ink-muted); cursor:pointer;">
-        {% if show_all_templates %}
-            <a href="/admin/applications/{{ application.id }}">Dölj inaktiva</a>
-        {% else %}
-            <a href="/admin/applications/{{ application.id }}?visa=alla">Visa även inaktiva</a>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+    <div class="tabs" role="tablist" aria-label="Applikation" id="app-tabs">
+        <button type="button" role="tab" data-tab="overview" id="tab-overview" aria-controls="panel-overview">Översikt</button>
+        <button type="button" role="tab" data-tab="templates" id="tab-templates">Mallar <span class="badge">{{ templates|length }}</span></button>
+        <button type="button" role="tab" data-tab="mailboxes" id="tab-mailboxes">Mailboxar <span class="badge">{{ mailboxes|length }}</span></button>
+        {% if canManage %}
+        <button type="button" role="tab" data-tab="threads" id="tab-threads">Trådar <span class="badge" id="threads-badge">{{ threadsOn ? 'På' : 'Av' }}</span></button>
+        <button type="button" role="tab" data-tab="alerts" id="tab-alerts">Larm {% if app_alerts|length > 0 %}<span class="badge bad">{{ app_alerts|length }}</span>{% endif %}</button>
+        <button type="button" role="tab" data-tab="storage" id="tab-storage">Lagring</button>
+        <button type="button" role="tab" data-tab="settings" id="tab-settings">Inställningar</button>
         {% endif %}
-    </label>
-</div>
-{% if templates|length > 0 %}
-<div class="table-wrap">
-    <table class="table">
-        <thead><tr><th>Prio</th><th>Namn</th><th>Från</th><th>Ämne (regex)</th><th>Regler</th><th>Träffgrad</th><th>Status</th><th class="col-right">Åtgärder</th></tr></thead>
-        <tbody>
-        {% for template in templates %}
-            <tr>
-                <td class="tabular muted">{{ template.priority }}</td>
-                <td>{{ template.name }}</td>
-                <td><code>{{ template.from_pattern|default('(alla)') }}</code></td>
-                <td><code>{{ template.subject_regex|default('(alla)') }}</code></td>
-                <td class="tabular">{{ template.rule_count }}</td>
-                <td>
-                    {% if template.avg_match_rate is not null %}
-                        {% set rate = (template.avg_match_rate * 100)|round %}
-                        {{ status_chip(rate >= 90 ? 'ok' : (rate >= 60 ? 'warn' : 'danger'), rate ~ '%') }}
+    </div>
+
+    <!-- ÖVERSIKT -->
+    <section class="tab-panel" data-panel="overview" role="tabpanel" aria-labelledby="tab-overview">
+        <div class="strip" aria-label="Nyckeltal">
+            <div class="cell"><span class="k">Mail senaste 30 dagarna</span><span class="v">{{ mail_count_30d }}</span><span class="d">{{ mailboxes|length }} {{ mailboxes|length == 1 ? 'mailbox' : 'mailboxar' }}</span></div>
+            <div class="cell"><span class="k">Träffgrad</span><span class="v">{{ avg_match_rate is not null ? avg_match_rate ~ ' %' : '—' }}</span><span class="d">{{ avg_match_rate is not null ? 'snitt över alla mail' : 'ingen data än' }}</span></div>
+            <div class="cell"><span class="k">Öppna larm</span><span class="v{{ app_alerts|length > 0 ? ' bad' : '' }}">{{ app_alerts|length }}</span><span class="d">{% if app_alerts|length > 0 %}<a class="link" href="#alerts" data-goto-tab="alerts">Visa larmen</a>{% else %}allt fungerar{% endif %}</span></div>
+            <div class="cell"><span class="k">Senast pollad</span><span class="v">{{ last_polled ? last_polled|slice(11, 5) : '—' }}</span><span class="d">{{ last_polled ? last_polled|slice(0, 10) : 'aldrig' }}</span></div>
+        </div>
+
+        <div>
+            <div class="sec-head"><h2>Mallar</h2><span class="sub">Först matchande mall (lägst prio-nummer) används.</span><a class="link right" href="#templates" data-goto-tab="templates">Hantera mallar</a></div>
+            <div class="box">
+                <table class="table">
+                    <thead><tr><th>Prio</th><th>Namn</th><th>Matchar ämne</th><th class="col-right">Regler</th><th>Träffgrad</th><th>Status</th></tr></thead>
+                    <tbody>
+                    {% for template in templates %}
+                        <tr class="clickable" onclick="window.location='/admin/templates/{{ template.id }}'">
+                            <td class="tabular muted">{{ template.priority }}</td>
+                            <td class="strong"><a href="/admin/templates/{{ template.id }}" style="text-decoration:none;">{{ template.name }}</a></td>
+                            <td><code>{{ template.subject_regex|default('(alla)') }}</code></td>
+                            <td class="col-right tabular">{{ template.rule_count }}</td>
+                            <td>{% if template.avg_match_rate is not null %}{% set rate = (template.avg_match_rate * 100)|round %}{{ status_chip(rate >= 90 ? 'ok' : (rate >= 60 ? 'warn' : 'danger'), rate ~ ' %') }}{% else %}<span class="muted">Ingen data än</span>{% endif %}</td>
+                            <td>{{ status_chip(template.is_active ? 'ok' : 'neutral', template.is_active ? 'Aktiv' : 'Inaktiv') }}</td>
+                        </tr>
                     {% else %}
-                        <span class="muted" style="font-size:12.5px;">Ingen data än</span>
+                        <tr><td colspan="6" class="muted">Inga mallar än.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div>
+                <div class="sec-head"><h2>Mailboxar</h2><a class="link right" href="#mailboxes" data-goto-tab="mailboxes">Visa alla</a></div>
+                <div class="box">
+                    {% for mailbox in mailboxes %}
+                        <div class="todo">
+                            <div class="dot ok"><svg class="ic" aria-hidden="true"><use href="#ic-mail"></use></svg></div>
+                            <div class="text"><b>{{ mailbox.username }}</b><span style="font-family:var(--font-mono);">{{ mailbox.host }}:{{ mailbox.port }} · {{ mailbox.folder }}</span></div>
+                            {% if not mailbox.is_active %}{{ status_chip('neutral', 'Inaktiv') }}{% elseif mailbox.last_ingest_event == 'imap_error' %}{{ status_chip('danger', 'Fel vid pollning') }}{% else %}{{ status_chip('ok', 'Aktiv') }}{% endif %}
+                        </div>
+                    {% else %}
+                        <div class="todo"><div class="text"><b>Inga mailboxar</b></div></div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div>
+                <div class="sec-head"><h2>Trådar</h2>{% if canManage %}<a class="link right" href="#threads" data-goto-tab="threads">Inställningar</a>{% endif %}</div>
+                <div class="box" style="padding:16px 18px; display:flex; flex-direction:column; gap:10px;">
+                    {% if threadsOn %}
+                        <div class="muted">Mail med samma {{ keyFields|join(', ') }} bildar en tråd. <code>{{ openValues|join(', ') }}</code> öppnar, <code>{{ closeValues|join(', ') }}</code> stänger.</div>
+                        <div style="display:flex; gap:20px; flex-wrap:wrap;"><span><b>{{ thread_summary.threads }}</b> trådar</span><span><b>{{ thread_summary.closed }}</b> stängda</span><span><b>{{ thread_summary.open }}</b> öppna</span><span><b style="color:{{ thread_summary.anomalies > 0 ? 'var(--warning)' : 'var(--success)' }};">{{ thread_summary.anomalies }}</b> avvikelser</span></div>
+                    {% else %}
+                        <div class="muted">Trådar är av för den här applikationen.</div>
                     {% endif %}
-                </td>
-                <td>{{ status_chip(template.is_active ? 'ok' : 'neutral', template.is_active ? 'Aktiv' : 'Inaktiv') }}</td>
-                <td class="col-right">
-                    <div class="row-actions">
-                        <a class="btn btn-small" href="/admin/templates/{{ template.id }}"><svg class="ic"><use href="#ic-arrow-right"></use></svg> Öppna</a>
-                        {% if can('applications.manage') %}
-                            {% if template.is_active %}
-                                <form method="post" action="/admin/applications/{{ application.id }}/templates/{{ template.id }}/delete" class="inline-form" data-confirm-delete="mallen &quot;{{ template.name }}&quot;? Dess regler behålls men slutar matcha nya mail.">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="btn btn-small btn-icon-only btn-danger" title="Radera" aria-label="Radera"><svg class="ic"><use href="#ic-trash"></use></svg></button>
-                                </form>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- MALLAR -->
+    <section class="tab-panel" data-panel="templates" role="tabpanel" aria-labelledby="tab-templates">
+        <div class="sec-head">
+            <h2>Mallar</h2>
+            <span class="sub"><a class="link" href="/admin/applications/{{ application.id }}{{ show_all_templates ? '#templates' : '?visa=alla#templates' }}">{{ show_all_templates ? 'Dölj inaktiva' : 'Visa även inaktiva' }}</a></span>
+            {% if canManage %}<a class="btn btn-primary btn-small right" href="/admin/applications/{{ application.id }}/templates/new"><svg class="ic" aria-hidden="true"><use href="#ic-plus"></use></svg> Ny mall</a>{% endif %}
+        </div>
+        {% if templates|length > 0 %}
+        <div class="box">
+            <table class="table">
+                <thead><tr><th>Prio</th><th>Namn</th><th>Från</th><th>Ämne (regex)</th><th class="col-right">Regler</th><th>Träffgrad</th><th>Status</th><th class="col-right">Åtgärder</th></tr></thead>
+                <tbody>
+                {% for template in templates %}
+                    <tr>
+                        <td class="tabular muted">{{ template.priority }}</td>
+                        <td class="strong">{{ template.name }}</td>
+                        <td><code>{{ template.from_pattern|default('(alla)') }}</code></td>
+                        <td><code>{{ template.subject_regex|default('(alla)') }}</code></td>
+                        <td class="col-right tabular">{{ template.rule_count }}</td>
+                        <td>{% if template.avg_match_rate is not null %}{% set rate = (template.avg_match_rate * 100)|round %}{{ status_chip(rate >= 90 ? 'ok' : (rate >= 60 ? 'warn' : 'danger'), rate ~ ' %') }}{% else %}<span class="muted">Ingen data än</span>{% endif %}</td>
+                        <td>{{ status_chip(template.is_active ? 'ok' : 'neutral', template.is_active ? 'Aktiv' : 'Inaktiv') }}</td>
+                        <td class="col-right">
+                            <div class="row-actions">
+                                <a class="btn btn-small" href="/admin/templates/{{ template.id }}">Öppna</a>
+                                {% if canManage %}
+                                    {% if template.is_active %}
+                                        <form method="post" action="/admin/applications/{{ application.id }}/templates/{{ template.id }}/delete" class="inline-form" data-confirm-delete="mallen &quot;{{ template.name }}&quot;? Dess regler behålls men slutar matcha nya mail.">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-small btn-icon-only btn-danger" title="Inaktivera mall" aria-label="Inaktivera mall"><svg class="ic" aria-hidden="true"><use href="#ic-trash"></use></svg></button>
+                                        </form>
+                                    {% else %}
+                                        <form method="post" action="/admin/applications/{{ application.id }}/templates/{{ template.id }}/reactivate" class="inline-form">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-small">Återställ</button>
+                                        </form>
+                                    {% endif %}
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="box"><div class="empty-state">
+            <div class="empty-icon"><svg class="ic-lg"><use href="#ic-inbox-empty"></use></svg></div>
+            <h3>Inga mallar än</h3>
+            <p>Skapa en mall och bygg regler genom att markera text i ett exempelmail.</p>
+            {% if canManage %}<a class="btn btn-primary" href="/admin/applications/{{ application.id }}/templates/new">+ Ny mall</a>{% endif %}
+        </div></div>
+        {% endif %}
+    </section>
+
+    <!-- MAILBOXAR -->
+    <section class="tab-panel" data-panel="mailboxes" role="tabpanel" aria-labelledby="tab-mailboxes">
+        <div class="sec-head"><h2>Mailboxar</h2><span class="sub">IMAP-brevlådor som pollas för den här applikationen.</span></div>
+        {% for mailbox in mailboxes %}
+            <div class="mailbox-item">
+                <div class="grow">
+                    <div style="font-weight:600;">{{ mailbox.username }}</div>
+                    <div class="muted" style="font-size:13px; font-family:var(--font-mono);">{{ mailbox.host }}:{{ mailbox.port }} · {{ mailbox.folder }}</div>
+                </div>
+                <div class="muted" style="font-size:13px;">Senast pollad {{ mailbox.last_polled_at|default('aldrig') }}</div>
+                {% if not mailbox.is_active %}{{ status_chip('neutral', 'Inaktiv') }}{% elseif mailbox.last_ingest_event == 'imap_error' %}{{ status_chip('danger', 'Fel vid pollning') }}{% else %}{{ status_chip('ok', 'Aktiv') }}{% endif %}
+                {% if canManage %}
+                    {% if mailbox.is_active %}
+                    <form method="post" action="/admin/mailboxes/{{ mailbox.id }}/poll" class="inline-form" data-poll-form>
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-small"><svg class="ic" aria-hidden="true"><use href="#ic-history"></use></svg> <span data-poll-label>Polla nu</span></button>
+                    </form>
+                    {% endif %}
+                    <a class="btn btn-small" href="/admin/mailboxes/{{ mailbox.id }}/edit"><svg class="ic" aria-hidden="true"><use href="#ic-edit"></use></svg> Redigera</a>
+                {% endif %}
+            </div>
+        {% else %}
+            <p class="muted" style="margin:0;">Inga mailboxar.</p>
+        {% endfor %}
+    </section>
+
+    {% if canManage %}
+    <form method="post" action="/admin/applications/{{ application.id }}/edit" id="app-form" class="stack" style="gap:20px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="settings_form" value="1">
+        <input type="hidden" name="thread_config" value="1">
+        <input type="hidden" name="return_tab" id="return-tab" value="settings">
+        <input type="hidden" name="thread_key_fields" id="thread_key_fields" value="{{ keyFields|join(', ') }}">
+        <input type="hidden" name="thread_open_values" id="thread_open_values" value="{{ openValues|join(', ') }}">
+        <input type="hidden" name="thread_close_values" id="thread_close_values" value="{{ closeValues|join(', ') }}">
+
+            <!-- ALLMÄNT -->
+            <section class="tab-panel settings-section" data-panel="settings" role="tabpanel" aria-labelledby="tab-settings">
+                <div>
+                    <h2 id="h-general">Allmänt</h2>
+                    <p class="lead">Vad applikationen heter och om den är igång.</p>
+                </div>
+                <label class="field">Namn<input type="text" name="name" value="{{ application.name }}" required></label>
+                <label class="field">Beskrivning <span style="font-weight:400;">(valfritt)</span><input type="text" name="description" value="{{ application.description }}"></label>
+                <div class="settings-divider"></div>
+                <div class="setting-row">
+                    <div class="setting-text">
+                        <div class="setting-title" id="l-active">Pollning aktiv</div>
+                        <div class="setting-desc">När den är av hämtas inga nya mail. Mailhistorik och mallar behålls.</div>
+                    </div>
+                    <label class="switch"><input type="checkbox" role="switch" name="is_active" value="1" aria-labelledby="l-active" {{ application.is_active ? 'checked' }}><span class="switch-track"></span></label>
+                </div>
+            </section>
+
+            <!-- LARM -->
+            <section class="tab-panel settings-section" data-panel="alerts" role="tabpanel" aria-labelledby="tab-alerts">
+                <div>
+                    <h2 id="h-alerts">Larm</h2>
+                    <p class="lead">Välj när och hur du vill bli varnad. Larm syns alltid i larmlistan.</p>
+                </div>
+                <div>
+                    <div class="sec-head"><h2 style="font-size:15px;">Öppna larm för den här applikationen</h2><a class="link right" href="/admin/alerts">Alla larm</a></div>
+                    <div class="box">
+                        {% for alert in app_alerts %}
+                            <div class="todo">
+                                <div class="dot warn"><svg class="ic" aria-hidden="true"><use href="#ic-alert"></use></svg></div>
+                                <div class="text"><b>{{ alert.title }}</b><span>{{ alert.detail }}</span></div>
+                                {% if alert.link_url %}<a class="btn btn-small" href="{{ alert.link_url }}">{{ alert.link_label }}</a>{% endif %}
+                            </div>
+                        {% else %}
+                            <div class="todo"><div class="dot ok"><svg class="ic" aria-hidden="true"><use href="#ic-check-circle"></use></svg></div><div class="text"><b>Inga öppna larm</b><span>Allt fungerar för den här applikationen.</span></div></div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="settings-divider"></div>
+                <div class="setting-row">
+                    <div class="setting-text">
+                        <div class="setting-title" id="l-partial">Larma vid delvis matchning</div>
+                        <div class="setting-desc">Ett mail matchade mallen men inte alla fält – oftast att avsändaren ändrat formatet.</div>
+                    </div>
+                    <label class="switch"><input type="checkbox" role="switch" name="alert_on_partial" value="1" aria-labelledby="l-partial" {{ application.alert_on_partial ? 'checked' }}><span class="switch-track"></span></label>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-text">
+                        <div class="setting-title" id="l-anomaly">Larma vid trådavvikelser</div>
+                        <div class="setting-desc">T.ex. en avbokning utan föregående bokning, eller en dubblett.</div>
+                    </div>
+                    <label class="switch"><input type="checkbox" role="switch" name="alert_on_thread_anomaly" value="1" aria-labelledby="l-anomaly" {{ application.alert_on_thread_anomaly ? 'checked' }}><span class="switch-track"></span></label>
+                </div>
+                <div class="settings-divider"></div>
+                <div>
+                    <div class="setting-row">
+                        <div class="setting-text"><div class="setting-title" id="l-mail">Skicka larm via mail</div></div>
+                        <label class="switch"><input type="checkbox" role="switch" name="alert_email_on" value="1" aria-labelledby="l-mail" data-controls="alert-email" {{ application.alert_email ? 'checked' }}><span class="switch-track"></span></label>
+                    </div>
+                    <div class="setting-reveal" data-reveal="alert-email" {{ application.alert_email ? '' : 'hidden' }}>
+                        <label class="field">Mottagare<input type="email" name="alert_email" value="{{ application.alert_email }}" placeholder="namn@exempel.se"></label>
+                    </div>
+                </div>
+                <div>
+                    <div class="setting-row">
+                        <div class="setting-text"><div class="setting-title" id="l-hook">Skicka larm till webhook</div></div>
+                        <label class="switch"><input type="checkbox" role="switch" name="alert_webhook_on" value="1" aria-labelledby="l-hook" data-controls="alert-hook" {{ application.alert_webhook_url ? 'checked' }}><span class="switch-track"></span></label>
+                    </div>
+                    <div class="setting-reveal" data-reveal="alert-hook" {{ application.alert_webhook_url ? '' : 'hidden' }}>
+                        <label class="field">Webhook-URL<input type="url" name="alert_webhook_url" value="{{ application.alert_webhook_url }}" placeholder="https://…"></label>
+                    </div>
+                </div>
+            </section>
+
+            <!-- LAGRING -->
+            <section class="tab-panel settings-section" data-panel="storage" role="tabpanel" aria-labelledby="tab-storage">
+                <div>
+                    <h2 id="h-storage">Lagring och gallring</h2>
+                    <p class="lead">Hur länge mpgw sparar data. Råmail innehåller personuppgifter och bör sparas kortare.</p>
+                </div>
+                <div>
+                    <div class="setting-row">
+                        <div class="setting-text">
+                            <div class="setting-title" id="l-prune">Gallra extraherad data</div>
+                            <div class="setting-desc">Fälten som API:t levererar.</div>
+                        </div>
+                        <label class="switch"><input type="checkbox" role="switch" name="retention_on" value="1" aria-labelledby="l-prune" data-controls="prune-data" {{ application.retention_days ? 'checked' }}><span class="switch-track"></span></label>
+                    </div>
+                    <div class="setting-reveal" data-reveal="prune-data" {{ application.retention_days ? '' : 'hidden' }}>
+                        <label class="field">Spara i (dagar)<input type="number" name="retention_days" min="1" value="{{ application.retention_days ?: 90 }}"></label>
+                    </div>
+                    <div class="setting-reveal note" data-reveal-off="prune-data" {{ application.retention_days ? 'hidden' : '' }}>Datan sparas för alltid.</div>
+                </div>
+                <div class="settings-divider"></div>
+                <div>
+                    <div class="setting-row">
+                        <div class="setting-text">
+                            <div class="setting-title" id="l-prune-raw">Gallra råmail</div>
+                            <div class="setting-desc">Originalmailet inklusive headers. Raderas det försvinner även extraherad data för mailet.</div>
+                        </div>
+                        <label class="switch"><input type="checkbox" role="switch" name="raw_retention_on" value="1" aria-labelledby="l-prune-raw" data-controls="prune-raw" {{ application.raw_email_retention_days ? 'checked' }}><span class="switch-track"></span></label>
+                    </div>
+                    <div class="setting-reveal" data-reveal="prune-raw" {{ application.raw_email_retention_days ? '' : 'hidden' }}>
+                        <label class="field">Spara i (dagar)<input type="number" name="raw_email_retention_days" min="1" value="{{ application.raw_email_retention_days ?: 90 }}"></label>
+                    </div>
+                    <div class="setting-reveal note" data-reveal-off="prune-raw" {{ application.raw_email_retention_days ? 'hidden' : '' }}>Råmail med personuppgifter sparas för alltid.</div>
+                </div>
+            </section>
+
+            <!-- TRÅDAR -->
+            <section class="tab-panel settings-section" data-panel="threads" role="tabpanel" aria-labelledby="tab-threads"
+                     id="threads-section"
+                     data-key-fields="{{ keyFields|json_encode|e('html_attr') }}"
+                     data-open-values="{{ openValues|json_encode|e('html_attr') }}"
+                     data-close-values="{{ closeValues|json_encode|e('html_attr') }}"
+                     data-field-names="{{ field_names|json_encode|e('html_attr') }}"
+                     data-field-values="{{ field_values|json_encode|e('html_attr') }}">
+                <div class="setting-row" style="align-items:flex-start;">
+                    <div class="setting-text">
+                        <h2 id="h-threads">Trådar</h2>
+                        <p class="lead">Koppla ihop mail som hör till samma ärende, t.ex. en bokning och dess avbokning.</p>
+                    </div>
+                    <label class="switch" style="margin-top:2px;"><input type="checkbox" role="switch" name="thread_enabled" value="1" aria-label="Använd trådar" id="thread-enabled" data-controls="threads-config" {{ threadsOn ? 'checked' }}><span class="switch-track"></span></label>
+                </div>
+
+                <div class="tp-empty" data-reveal-off="threads-config" {{ threadsOn ? 'hidden' : '' }}>Trådar är av. Slå på för att para ihop bokningar och avbokningar automatiskt.</div>
+
+                <div data-reveal="threads-config" {{ threadsOn ? '' : 'hidden' }} style="display:flex; flex-direction:column; gap:22px;">
+                    <div>
+                        <div class="st-step"><span class="st-num">1</span>Vad avgör att det är samma ärende?</div>
+                        <div class="st-body">
+                            <p class="hint">Mail med samma värden i alla valda fält hamnar i samma tråd.</p>
+                            <div class="chip-row" id="key-chips"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="st-step"><span class="st-num">2</span>Vad öppnar och stänger en tråd?</div>
+                        <div class="st-body">
+                            <label class="field">Fältet som avgör
+                                <select name="thread_event_field" id="thread_event_field" style="font-family:var(--font-mono); max-width:320px;">
+                                    {% for name in fieldNames %}<option value="{{ name }}" {{ name == eventField ? 'selected' }}>{{ name }}</option>{% endfor %}
+                                </select>
+                            </label>
+                            <div class="event-boxes">
+                                <div class="event-box open">
+                                    <div class="event-title"><span class="dot"></span>Öppnar en tråd</div>
+                                    <div class="chip-row" id="open-chips"></div>
+                                </div>
+                                <div class="event-box close">
+                                    <div class="event-title"><span class="dot"></span>Stänger en tråd</div>
+                                    <div class="chip-row" id="close-chips"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="st-step"><span class="st-num">3</span>Så här ser det ut på dina riktiga mail</div>
+                        {% if thread_summary.records > 0 %}
+                        <div class="thread-preview" style="margin-top:10px;">
+                            {% for example in thread_summary.examples %}
+                                <div class="tp-head">{{ example.label }} {{ example.closed ? status_chip('ok', 'Stängd') : status_chip('warn', 'Öppen') }}</div>
+                                {% for ev in example.events %}
+                                    <div class="tp-row">
+                                        <span class="tp-pill {{ ev.event }}">{{ ev.event == 'open' ? 'Öppnar' : 'Stänger' }}</span>
+                                        <span class="tabular muted">{{ ev.sent_at|default('okänt') }}</span>
+                                        <span>{{ ev.subject }}</span>
+                                        {% if ev.anomaly %}{{ status_chip('warn', 'Avvikelse') }}{% endif %}
+                                    </div>
+                                {% endfor %}
                             {% else %}
-                                <form method="post" action="/admin/applications/{{ application.id }}/templates/{{ template.id }}/reactivate" class="inline-form">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="btn btn-small">Återställ</button>
-                                </form>
-                            {% endif %}
+                                <div class="tp-head">Inga trådar med flera mail än.</div>
+                            {% endfor %}
+                            <div class="tp-foot">
+                                <span><b style="color:var(--ink);">{{ thread_summary.records }}</b> mail ingår</span>
+                                <span><b style="color:var(--ink);">{{ thread_summary.closed }}</b> trådar stängda · <b style="color:var(--ink);">{{ thread_summary.open }}</b> öppna</span>
+                                <span><b style="color:{{ thread_summary.anomalies > 0 ? 'var(--warning)' : 'var(--success)' }};">{{ thread_summary.anomalies }}</b> avvikelser</span>
+                            </div>
+                        </div>
+                        <p class="hint" style="margin:6px 0 0 34px;">Gäller den sparade inställningen. Ändringar räknas om när du sparar.</p>
+                        {% else %}
+                        <div class="tp-empty" style="margin-top:10px;">Inga mail är kopplade till trådar än. Spara inställningen så räknas befintliga mail om.</div>
                         {% endif %}
                     </div>
-                </td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-</div>
-{% else %}
-    <div class="panel">
-        <div class="empty-state">
-            <div class="empty-icon"><svg class="ic-lg"><use href="#ic-inbox-empty"></use></svg></div>
-            <h3>{{ show_all_templates ? 'Inga mallar än' : 'Inga aktiva mallar' }}</h3>
-            <p>{{ show_all_templates ? 'Skapa en mall och bygg regler genom att markera text i ett exempelmail.' : 'Visa även inaktiva ovan om du söker en raderad mall.' }}</p>
-            {% if show_all_templates %}<a class="btn btn-primary" href="/admin/applications/{{ application.id }}/templates/new">+ Ny mall</a>{% endif %}
+                </div>
+            </section>
+
+        <div class="savebar" id="savebar" hidden>
+            <span class="dirty-note">Du har osparade ändringar</span>
+            <span class="clean-note">Inga osparade ändringar</span>
+            <span class="grow"></span>
+            <button type="button" class="btn" id="cancel-btn">Avbryt</button>
+            <button type="submit" class="btn btn-primary" id="save-btn" disabled>Spara ändringar</button>
         </div>
-    </div>
-{% endif %}
+    </form>
+
+    <section class="tab-panel settings-section danger-section" data-panel="settings" aria-labelledby="h-danger">
+        <div>
+            <h2 id="h-danger">Ta bort applikation</h2>
+            <p class="lead">Mailboxarna slutar pollas direkt. Mailhistorik och mallar behålls och kan återställas senare.</p>
+        </div>
+        <form method="post" action="/admin/applications/{{ application.id }}/delete" data-confirm-delete="applikationen &quot;{{ application.name }}&quot;? Dess mailboxar slutar pollas. Historik och mallar behålls.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-danger"><svg class="ic" aria-hidden="true"><use href="#ic-trash"></use></svg> Ta bort applikation</button>
+        </form>
+    </section>
+    {% endif %}
+</div>
 
 <script>
+document.querySelectorAll('[data-poll-form]').forEach(function (form) {
+    form.addEventListener('submit', function () {
+        var btn = form.querySelector('button');
+        btn.disabled = true;
+        form.querySelector('[data-poll-label]').textContent = 'Pollar…';
+    });
+});
+
 document.querySelectorAll('[data-confirm-delete]').forEach(function (form) {
     form.addEventListener('submit', function (e) {
         if (!confirm('Radera ' + form.dataset.confirmDelete)) {
@@ -122,5 +414,120 @@ document.querySelectorAll('[data-confirm-delete]').forEach(function (form) {
         }
     });
 });
+
+(function () {
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('#app-tabs [data-tab]'));
+    var ids = tabs.map(function (t) { return t.dataset.tab; });
+    var formTabs = ['threads', 'alerts', 'storage', 'settings'];
+    var form = document.getElementById('app-form');
+    var savebar = document.getElementById('savebar');
+    var saveBtn = document.getElementById('save-btn');
+
+    function show(id) {
+        if (ids.indexOf(id) === -1) { id = 'overview'; }
+        document.querySelectorAll('[data-panel]').forEach(function (p) { p.classList.toggle('active', p.dataset.panel === id); });
+        tabs.forEach(function (b) {
+            var on = b.dataset.tab === id;
+            b.classList.toggle('on', on);
+            b.setAttribute('aria-selected', on ? 'true' : 'false');
+            b.tabIndex = on ? 0 : -1;
+        });
+        if (savebar) { savebar.hidden = formTabs.indexOf(id) === -1; }
+        var rt = document.getElementById('return-tab');
+        if (rt) { rt.value = id; }
+        try { history.replaceState(null, '', location.pathname + location.search + '#' + id); } catch (e) { /* ignore */ }
+    }
+    tabs.forEach(function (tab, i) {
+        tab.addEventListener('click', function () { show(tab.dataset.tab); });
+        tab.addEventListener('keydown', function (e) {
+            var next = null;
+            if (e.key === 'ArrowRight') { next = tabs[(i + 1) % tabs.length]; }
+            else if (e.key === 'ArrowLeft') { next = tabs[(i - 1 + tabs.length) % tabs.length]; }
+            else if (e.key === 'Home') { next = tabs[0]; }
+            else if (e.key === 'End') { next = tabs[tabs.length - 1]; }
+            if (next) { e.preventDefault(); show(next.dataset.tab); next.focus(); }
+        });
+    });
+    document.querySelectorAll('[data-goto-tab]').forEach(function (a) {
+        a.addEventListener('click', function (e) { e.preventDefault(); show(a.dataset.gotoTab); window.scrollTo(0, 0); });
+    });
+    show((location.hash || '').replace('#', '') || 'overview');
+
+    if (!form) { return; }
+
+    function setDirty(on) {
+        savebar.classList.toggle('dirty', on);
+        saveBtn.disabled = !on;
+    }
+    form.addEventListener('input', function () { setDirty(true); });
+    form.addEventListener('change', function () { setDirty(true); });
+    document.getElementById('cancel-btn').addEventListener('click', function () { window.location.reload(); });
+
+    function applyReveals(name, on) {
+        document.querySelectorAll('[data-reveal="' + name + '"]').forEach(function (el) { el.hidden = !on; });
+        document.querySelectorAll('[data-reveal-off="' + name + '"]').forEach(function (el) { el.hidden = on; });
+    }
+    document.querySelectorAll('input[data-controls]').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+            applyReveals(cb.dataset.controls, cb.checked);
+            if (cb.id === 'thread-enabled') {
+                document.getElementById('threads-badge').textContent = cb.checked ? 'På' : 'Av';
+            }
+        });
+    });
+
+    var section = document.getElementById('threads-section');
+    var state = {
+        key: JSON.parse(section.dataset.keyFields || '[]'),
+        open: JSON.parse(section.dataset.openValues || '[]'),
+        close: JSON.parse(section.dataset.closeValues || '[]')
+    };
+    var fieldNames = JSON.parse(section.dataset.fieldNames || '[]');
+    var fieldValues = JSON.parse(section.dataset.fieldValues || '{}');
+    var eventSelect = document.getElementById('thread_event_field');
+
+    function chip(label, cls, aria, onClick, withX) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'chip-btn ' + cls;
+        b.setAttribute('aria-label', aria);
+        b.appendChild(document.createTextNode((cls.indexOf('suggest') !== -1 ? '+ ' : '') + label));
+        if (withX) {
+            var x = document.createElement('span');
+            x.className = 'x';
+            x.setAttribute('aria-hidden', 'true');
+            x.textContent = '×';
+            b.appendChild(x);
+        }
+        b.addEventListener('click', onClick);
+        return b;
+    }
+    function without(list, value) { return list.filter(function (v) { return v !== value; }); }
+    function renderList(containerId, list, suggestions, kind, removeLabel, addLabel) {
+        var box = document.getElementById(containerId);
+        box.textContent = '';
+        list.forEach(function (name) {
+            box.appendChild(chip(name, kind.cls, removeLabel + name, function () { state[kind.key] = without(state[kind.key], name); sync(); }, true));
+        });
+        suggestions.forEach(function (name) {
+            box.appendChild(chip(name, kind.suggestCls, addLabel + name, function () { state[kind.key] = state[kind.key].concat([name]); sync(); }, false));
+        });
+    }
+    var interacted = false;
+    function sync() {
+        document.getElementById('thread_key_fields').value = state.key.join(', ');
+        document.getElementById('thread_open_values').value = state.open.join(', ');
+        document.getElementById('thread_close_values').value = state.close.join(', ');
+        var keySuggestions = fieldNames.filter(function (n) { return state.key.indexOf(n) === -1; }).slice(0, 5);
+        renderList('key-chips', state.key, keySuggestions, { key: 'key', cls: 'mono', suggestCls: 'mono suggest' }, 'Ta bort nyckelfält ', 'Lägg till nyckelfält ');
+        var seen = (fieldValues[eventSelect.value] || []).filter(function (v) { return state.open.indexOf(v) === -1 && state.close.indexOf(v) === -1; });
+        renderList('open-chips', state.open, seen, { key: 'open', cls: 'open-chip', suggestCls: 'suggest' }, 'Ta bort värde som öppnar ', 'Låt öppna en tråd: ');
+        renderList('close-chips', state.close, seen, { key: 'close', cls: 'close-chip', suggestCls: 'suggest' }, 'Ta bort värde som stänger ', 'Låt stänga en tråd: ');
+        if (interacted) { setDirty(true); }
+    }
+    section.addEventListener('click', function (e) { if (e.target.closest('.chip-btn')) { interacted = true; } }, true);
+    eventSelect.addEventListener('change', function () { interacted = true; sync(); });
+    sync();
+})();
 </script>
 {% endblock %}

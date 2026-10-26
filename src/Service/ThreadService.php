@@ -259,6 +259,9 @@ final class ThreadService
                 continue;
             }
             if ($a['anomaly'] !== null) {
+                if ($row['application_id'] !== null && !$this->anomalyAlertsEnabled((int) $row['application_id'])) {
+                    continue;
+                }
                 $this->alerts->create(
                     'thread_anomaly',
                     $row['application_id'] !== null ? (int) $row['application_id'] : null,
@@ -275,5 +278,104 @@ final class ThreadService
                 )->execute([$row['raw_email_id']]);
             }
         }
+    }
+
+    /** @var array<int,bool> */
+    private array $anomalyAlertCache = [];
+
+    private function anomalyAlertsEnabled(int $applicationId): bool
+    {
+        if (!isset($this->anomalyAlertCache[$applicationId])) {
+            $stmt = $this->db->prepare('SELECT alert_on_thread_anomaly FROM applications WHERE id = ?');
+            $stmt->execute([$applicationId]);
+            $value = $stmt->fetchColumn();
+            $this->anomalyAlertCache[$applicationId] = $value === false || (int) $value === 1;
+        }
+
+        return $this->anomalyAlertCache[$applicationId];
+    }
+
+    /**
+     * Sammanfattning och exempel for admin-UI:t (applikationens redigeringssida).
+     *
+     * @return array{records:int,threads:int,closed:int,open:int,anomalies:int,examples:array<int,array{label:string,closed:bool,events:array<int,array{event:string,subject:string,sent_at:?string,anomaly:?string}>}>}
+     */
+    public function summaryForApplication(int $applicationId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) AS records,
+                    COUNT(DISTINCT er.thread_key, er.thread_no) AS threads,
+                    COUNT(DISTINCT CASE WHEN er.thread_state = 'closed' THEN CONCAT(er.thread_key, er.thread_no) END) AS closed,
+                    COUNT(DISTINCT CASE WHEN er.thread_state = 'open' THEN CONCAT(er.thread_key, er.thread_no) END) AS open_threads,
+                    SUM(er.thread_anomaly IS NOT NULL) AS anomalies
+             FROM extracted_records er JOIN templates t ON t.id = er.template_id
+             WHERE t.application_id = ? AND er.thread_key IS NOT NULL"
+        );
+        $stmt->execute([$applicationId]);
+        $row = $stmt->fetch() ?: [];
+
+        $recent = $this->db->prepare(
+            'SELECT er.id, er.thread_key, er.thread_no, er.thread_sequence, er.thread_event, er.thread_state, er.thread_anomaly,
+                    re.subject, re.received_at
+             FROM extracted_records er
+             JOIN templates t ON t.id = er.template_id
+             JOIN raw_emails re ON re.id = er.raw_email_id
+             WHERE t.application_id = ? AND er.thread_key IS NOT NULL
+             ORDER BY re.received_at DESC, er.id DESC LIMIT 80'
+        );
+        $recent->execute([$applicationId]);
+        $groups = [];
+        foreach ($recent->fetchAll() as $r) {
+            $groups[$r['thread_key'] . '-' . $r['thread_no']][] = $r;
+        }
+
+        $examples = [];
+        foreach ($groups as $members) {
+            if (count($members) < 2) {
+                continue;
+            }
+            usort($members, static fn (array $a, array $b): int => (int) $a['thread_sequence'] <=> (int) $b['thread_sequence']);
+            $examples[] = [
+                'label' => $this->exampleLabel((int) $members[0]['id'], $applicationId),
+                'closed' => $members[0]['thread_state'] === 'closed',
+                'events' => array_map(static fn (array $m): array => [
+                    'event' => (string) $m['thread_event'],
+                    'subject' => (string) $m['subject'],
+                    'sent_at' => $m['received_at'] !== null
+                        ? (new \DateTimeImmutable($m['received_at']))->setTimezone(new \DateTimeZone('Europe/Stockholm'))->format('Y-m-d H:i')
+                        : null,
+                    'anomaly' => $m['thread_anomaly'],
+                ], $members),
+            ];
+            if (count($examples) >= 3) {
+                break;
+            }
+        }
+
+        return [
+            'records' => (int) ($row['records'] ?? 0),
+            'threads' => (int) ($row['threads'] ?? 0),
+            'closed' => (int) ($row['closed'] ?? 0),
+            'open' => (int) ($row['open_threads'] ?? 0),
+            'anomalies' => (int) ($row['anomalies'] ?? 0),
+            'examples' => $examples,
+        ];
+    }
+
+    /** Läsbar etikett för en tråd: nyckelfältens värden för ett av dess records. */
+    private function exampleLabel(int $recordId, int $applicationId): string
+    {
+        $app = $this->db->prepare('SELECT thread_key_fields FROM applications WHERE id = ?');
+        $app->execute([$applicationId]);
+        $names = self::splitList((string) $app->fetchColumn());
+        if ($names === []) {
+            return '';
+        }
+
+        $stmt = $this->db->prepare('SELECT field_name, field_value FROM extracted_fields WHERE extracted_record_id = ? AND matched = 1');
+        $stmt->execute([$recordId]);
+        $fields = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
+        return implode(' · ', array_filter(array_map(static fn (string $n): string => (string) ($fields[$n] ?? ''), $names)));
     }
 }

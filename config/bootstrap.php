@@ -123,6 +123,7 @@ $container->set(MailboxPoller::class, fn (Container $c) => new MailboxPoller(
     $c->get(DeletedEmailRepository::class),
     $c->get(AlertRepository::class),
     $c->get(ThreadService::class),
+    $c->get(ApplicationRepository::class),
 ));
 
 // --------------------------------------------------------------------
@@ -204,6 +205,7 @@ $container->set(MailboxesController::class, fn (Container $c) => new MailboxesCo
     $c->get(WebklexImapClient::class),
     $c->get(IngestLogRepository::class),
     $c->get(AuditLogger::class),
+    $c->get(MailboxPoller::class),
 ));
 $container->set(EmailsController::class, fn (Container $c) => new EmailsController(
     $c->get(ViewRenderer::class),

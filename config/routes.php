@@ -65,6 +65,7 @@ return function (App $app): void {
 
         $group->get('/mailboxes/{id}/edit', [MailboxesController::class, 'editForm'])->add($perm('applications.manage'));
         $group->post('/mailboxes/{id}/edit', [MailboxesController::class, 'update'])->add($perm('applications.manage'));
+        $group->post('/mailboxes/{id}/poll', [MailboxesController::class, 'poll'])->add($perm('applications.manage'));
         $group->post('/mailboxes/{id}/test', [MailboxesController::class, 'testConnection'])->add($perm('applications.view'));
         $group->post('/mailboxes/{id}/delete', [MailboxesController::class, 'delete'])->add($perm('applications.manage'));
 
@@ -84,6 +85,7 @@ return function (App $app): void {
         $group->post('/emails/{uuid}/delete', [EmailsController::class, 'delete'])->add($perm('emails.manage'));
 
         $group->get('/alerts', [AlertsController::class, 'index'])->add($perm('alerts.view'));
+        $group->post('/alerts/acknowledge', [AlertsController::class, 'acknowledgeMany'])->add($perm('alerts.manage'));
         $group->post('/alerts/{id}/acknowledge', [AlertsController::class, 'acknowledge'])->add($perm('alerts.manage'));
         $group->post('/alerts/{id}/resolve', [AlertsController::class, 'resolve'])->add($perm('alerts.manage'));
 

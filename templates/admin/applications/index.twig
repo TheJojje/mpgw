@@ -1,129 +1,80 @@
 {% extends "layout.twig" %}
 {% block content %}
-<div class="page-header">
-    <h1>Applikationer</h1>
-    <a class="btn btn-primary" href="/admin/applications/new"><svg class="ic"><use href="#ic-plus"></use></svg> Ny applikation</a>
-</div>
-{% if error %}<p class="error">{{ error }}</p>{% endif %}
-
-<div class="table-toolbar">
-    <div class="search-field">
-        <svg class="ic"><use href="#ic-search"></use></svg>
-        <input type="text" id="applications-search" placeholder="Sök på namn…">
+<div class="stack">
+    <div class="page-header" style="margin-bottom:0;">
+        <div>
+            <h1>Applikationer</h1>
+            <p class="page-lead">Varje applikation har egna mailboxar, mallar och regler.</p>
+        </div>
+        {% if can('applications.manage') %}<a class="btn btn-primary" href="/admin/applications/new"><svg class="ic" aria-hidden="true"><use href="#ic-plus"></use></svg> Ny applikation</a>{% endif %}
     </div>
-    <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--ink-muted); cursor:pointer;">
-        {% if show_all %}
-            <a href="/admin/applications">Dölj inaktiva</a>
-        {% else %}
-            <a href="/admin/applications?visa=alla">Visa även inaktiva</a>
-        {% endif %}
-    </label>
-    <span class="toolbar-count" id="applications-count">{{ applications|length }} applikationer</span>
-</div>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
 
-{% if applications|length > 0 %}
-<div class="table-wrap">
-    <table class="table">
-        <thead><tr><th>Namn</th><th>Mailboxar</th><th>Mallar</th><th>Status</th><th class="col-right">Åtgärder</th></tr></thead>
-        <tbody id="applications-tbody">
-        {% for application in applications %}
-        <tr data-application-name="{{ application.name|lower }}">
-            <td>{{ application.name }}</td>
-            <td class="tabular">{{ application.mailbox_count }}</td>
-            <td class="tabular">{{ application.template_count }}</td>
-            <td>{{ status_chip(application.is_active ? 'ok' : 'neutral', application.is_active ? 'Aktiv' : 'Inaktiv') }}</td>
-            <td class="col-right">
-                <div class="row-actions">
-                    <a class="btn btn-small" href="/admin/applications/{{ application.id }}">Öppna</a>
-                    <button type="button" class="btn btn-small btn-icon-only" title="Redigera" aria-label="Redigera" data-toggle-edit="{{ application.id }}"><svg class="ic"><use href="#ic-edit"></use></svg></button>
-                    {% if application.is_active %}
-                        <form method="post" action="/admin/applications/{{ application.id }}/delete" class="inline-form" data-confirm-delete="applikationen &quot;{{ application.name }}&quot;? Dess mailboxar slutar pollas. Historik och mallar behålls.">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="btn btn-small btn-icon-only btn-danger" title="Radera" aria-label="Radera"><svg class="ic"><use href="#ic-trash"></use></svg></button>
-                        </form>
-                    {% else %}
-                        <form method="post" action="/admin/applications/{{ application.id }}/reactivate" class="inline-form">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="btn btn-small">Återställ</button>
-                        </form>
-                    {% endif %}
-                </div>
-            </td>
-        </tr>
-        <tr id="edit-row-{{ application.id }}" class="edit-row" hidden>
-            <td colspan="5">
-                <div class="new-rule-panel">
-                    <form method="post" action="/admin/applications/{{ application.id }}/edit" class="form">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="redirect_to" value="list">
-                        <fieldset>
-                            <legend>Redigera {{ application.name }}</legend>
-                            <label>Namn<input type="text" name="name" value="{{ application.name }}" required></label>
-                            <label>Beskrivning<textarea name="description">{{ application.description }}</textarea></label>
-                            <label>Larm-mail (valfritt)<input type="email" name="alert_email" value="{{ application.alert_email }}"></label>
-                            <label>Larm-webhook URL (valfritt)<input type="url" name="alert_webhook_url" value="{{ application.alert_webhook_url }}"></label>
-                        </fieldset>
-                        <div class="inline-form-actions">
-                            <button type="submit" class="btn btn-primary">Spara</button>
-                            <button type="button" class="btn" data-cancel-edit="{{ application.id }}">Avbryt</button>
+    <div class="table-toolbar" style="margin:0;">
+        <div class="search-field">
+            <svg class="ic" aria-hidden="true"><use href="#ic-search"></use></svg>
+            <input type="text" id="applications-search" placeholder="Sök på namn…" aria-label="Sök applikation">
+        </div>
+        <div class="seg" role="group" aria-label="Visa">
+            <a href="/admin/applications" class="{{ show_all ? '' : 'on' }}">Aktiva</a>
+            <a href="/admin/applications?visa=alla" class="{{ show_all ? 'on' : '' }}">Alla</a>
+        </div>
+        <span class="toolbar-count" id="applications-count">{{ applications|length }} applikationer</span>
+    </div>
+
+    {% if applications|length > 0 %}
+    <div class="box">
+        <table class="table">
+            <thead><tr><th>Namn</th><th>Mailboxar</th><th>Mallar</th><th>Status</th><th class="col-right">Åtgärder</th></tr></thead>
+            <tbody id="applications-tbody">
+            {% for application in applications %}
+                <tr class="clickable" data-application-name="{{ application.name|lower }}" onclick="window.location='/admin/applications/{{ application.id }}'">
+                    <td class="strong"><a href="/admin/applications/{{ application.id }}" style="text-decoration:none;">{{ application.name }}</a>{% if application.description %}<span class="sub">{{ application.description }}</span>{% endif %}</td>
+                    <td class="tabular">{{ application.mailbox_count }}</td>
+                    <td class="tabular">{{ application.template_count }}</td>
+                    <td>{{ status_chip(application.is_active ? 'ok' : 'neutral', application.is_active ? 'Aktiv' : 'Inaktiv') }}</td>
+                    <td class="col-right" onclick="event.stopPropagation()">
+                        <div class="row-actions">
+                            <a class="btn btn-small" href="/admin/applications/{{ application.id }}">Öppna</a>
+                            {% if can('applications.manage') and not application.is_active %}
+                                <form method="post" action="/admin/applications/{{ application.id }}/reactivate" class="inline-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-small">Återställ</button>
+                                </form>
+                            {% endif %}
                         </div>
-                    </form>
-                </div>
-            </td>
-        </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-</div>
-{% else %}
-    <div class="panel">
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="box">
         <div class="empty-state">
             <div class="empty-icon"><svg class="ic-lg"><use href="#ic-inbox-empty"></use></svg></div>
             <h3>{{ show_all ? 'Inga applikationer registrerade än' : 'Inga aktiva applikationer' }}</h3>
-            <p>{{ show_all ? 'Registrera din första applikation för att börja hämta och tolka mail.' : 'Visa även inaktiva ovan om du söker en raderad applikation.' }}</p>
-            {% if not show_all %}<a class="btn btn-primary" href="/admin/applications/new">+ Ny applikation</a>{% endif %}
+            <p>{{ show_all ? 'Registrera din första applikation för att börja hämta och tolka mail.' : 'Visa alla ovan om du söker en inaktiverad applikation.' }}</p>
+            {% if not show_all and can('applications.manage') %}<a class="btn btn-primary" href="/admin/applications/new">+ Ny applikation</a>{% endif %}
         </div>
     </div>
-{% endif %}
+    {% endif %}
+</div>
 
 <script>
 (function () {
-    document.querySelectorAll('[data-toggle-edit]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var row = document.getElementById('edit-row-' + btn.dataset.toggleEdit);
-            if (row) { row.hidden = !row.hidden; }
-        });
-    });
-    document.querySelectorAll('[data-cancel-edit]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var row = document.getElementById('edit-row-' + btn.dataset.cancelEdit);
-            if (row) { row.hidden = true; }
-        });
-    });
-
     var search = document.getElementById('applications-search');
     var countEl = document.getElementById('applications-count');
     search && search.addEventListener('input', function () {
         var q = search.value.trim().toLowerCase();
-        var visible = 0;
-        var total = 0;
+        var visible = 0, total = 0;
         document.querySelectorAll('#applications-tbody > tr[data-application-name]').forEach(function (row) {
             total++;
             var match = row.dataset.applicationName.indexOf(q) !== -1;
             row.hidden = !match;
-            var editRow = document.getElementById('edit-row-' + row.querySelector('[data-toggle-edit]').dataset.toggleEdit);
-            if (!match && editRow) { editRow.hidden = true; }
             if (match) { visible++; }
         });
         countEl.textContent = visible + ' av ' + total + ' applikationer';
-    });
-
-    document.querySelectorAll('[data-confirm-delete]').forEach(function (form) {
-        form.addEventListener('submit', function (e) {
-            if (!confirm('Radera ' + form.dataset.confirmDelete)) {
-                e.preventDefault();
-            }
-        });
     });
 })();
 </script>
