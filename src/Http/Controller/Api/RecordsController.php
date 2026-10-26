@@ -76,7 +76,26 @@ final class RecordsController
         $countStmt->execute($args);
         $total = (int) $countStmt->fetchColumn();
 
-        $data = array_map(fn (array $r) => $this->formatRecord($r), $records);
+        // ?include=fields: hamta alla posters falt i ETT extra fraga (i stallet for ett
+        // anrop per post via /records/{id}) - sparar anrop for konsumenter som behover alla falt.
+        $fieldsByRecord = null;
+        if (($params['include'] ?? '') === 'fields' && $records !== []) {
+            $ids = array_map(static fn (array $r): int => (int) $r['id'], $records);
+            $in = implode(',', array_fill(0, count($ids), '?'));
+            $fieldStmt = $this->db->prepare(
+                "SELECT extracted_record_id, field_name, field_value, matched FROM extracted_fields WHERE extracted_record_id IN ({$in})"
+            );
+            $fieldStmt->execute($ids);
+            $fieldsByRecord = array_fill_keys($ids, []);
+            foreach ($fieldStmt->fetchAll() as $field) {
+                $fieldsByRecord[(int) $field['extracted_record_id']][$field['field_name']] = $field['matched'] ? $field['field_value'] : null;
+            }
+        }
+
+        $data = array_map(
+            fn (array $r) => $this->formatRecord($r, prefetchedFields: $fieldsByRecord[(int) $r['id']] ?? null),
+            $records
+        );
 
         return $this->json($response, [
             'data' => $data,
@@ -132,7 +151,7 @@ final class RecordsController
         ]);
     }
 
-    private function formatRecord(array $record, bool $includeFields = false): array
+    private function formatRecord(array $record, bool $includeFields = false, ?array $prefetchedFields = null): array
     {
         $result = [
             'id' => $record['uuid'],
@@ -151,7 +170,9 @@ final class RecordsController
             'thread_anomaly' => $record['thread_anomaly'],
         ];
 
-        if ($includeFields) {
+        if ($prefetchedFields !== null) {
+            $result['fields'] = $prefetchedFields;
+        } elseif ($includeFields) {
             $stmt = $this->db->prepare('SELECT field_name, field_value, matched FROM extracted_fields WHERE extracted_record_id = ?');
             $stmt->execute([$record['id']]);
             $fields = [];

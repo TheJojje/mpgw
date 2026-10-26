@@ -4,28 +4,52 @@
     <h1>Hjälp &amp; API-dokumentation</h1>
 </div>
 
-<div class="help-toc panel" style="padding:14px 18px; margin-bottom:18px;">
+<div class="help-toc box" style="padding:14px 18px; margin-bottom:18px;">
     <strong>Innehåll:</strong>
     <a href="#kom-igang">Kom igång</a> ·
+    <a href="#datamodell">Datamodell</a> ·
     <a href="#autentisering">Autentisering</a> ·
     <a href="#scopes">Scopes</a> ·
     <a href="#rate-limiting">Rate limiting</a> ·
+    <a href="#konventioner">Konventioner</a> ·
     <a href="#felformat">Felformat</a> ·
     <a href="#endpoints">Endpoints</a> ·
-    <a href="#exempelklienter">Exempelklienter</a>
+    <a href="#trader">Trådar</a> ·
+    <a href="#effektivt">Använd API:t effektivt</a> ·
+    <a href="#exempelklienter">Exempelklienter</a> ·
+    <a href="#andringar">Ändringar</a>
 </div>
 
 <section id="kom-igang">
 <h2>Kom igång</h2>
-<p>mpgw hämtar mail via IMAP, matchar dem mot mallar, extraherar fält enligt regler du själv bygger, och gör resultatet tillgängligt via ett nyckelskyddat API. Flödet för att komma igång:</p>
+<p>mpgw hämtar mail via IMAP, matchar dem mot mallar, extraherar fält enligt regler du själv bygger, och gör resultatet tillgängligt via ett nyckelskyddat, skrivskyddat API. Flödet för att komma igång:</p>
 <ol>
     <li><strong><a href="/admin/applications/new">Ny applikation</a></strong> — registrera namn + IMAP-uppgifter för avsändarens mailbox.</li>
-    <li>På applikationssidan: <strong>Ny mall</strong> — ange från-adress/ämne-villkor för att matcha rätt mailtyp.</li>
-    <li>I mallbyggaren: klistra in ett exempelmail, markera text i antingen ämnesraden eller brödtexten för att bygga extraktionsregler — se förslag, justera, spara.</li>
+    <li>På applikationssidan, fliken <strong>Mallar → Ny mall</strong> — ange från-adress/ämne-villkor för att matcha rätt mailtyp.</li>
+    <li>I mallbyggaren: klistra in ett exempelmail, markera text i ämnesraden, brödtexten eller mail-headers för att bygga extraktionsregler — se förslag, justera, spara.</li>
+    <li>Valfritt: slå på <strong>Trådar</strong> under applikationens flik Trådar för att koppla ihop mail som hör till samma ärende (se <a href="#trader">Trådar</a>).</li>
     <li><strong><a href="/admin/api-keys/new">Ny API-nyckel</a></strong> — knuten till exakt en applikation, med de scopes du väljer.</li>
-    <li>Låt cron köra <code>bin/poll-mailboxes.php</code>, hämta sedan ut data via <code>/api/v1/records</code>.</li>
+    <li>Låt cron köra <code>bin/poll-mailboxes.php</code> (eller tryck <em>Polla nu</em> på mailboxen), hämta sedan ut data via <code>/api/v1/records</code>.</li>
 </ol>
-<p class="hint">mpgw gör själv ingen tolkning av vad ett mail <em>betyder</em> — varje post i API-svaret är bara rubrik och de fält en mall extraherat. Det är upp till din klient att strukturera datat (t.ex. avgöra om ett mail är en bokning eller en avbokning genom att läsa ett extraherat fält eller ämnesraden).</p>
+<p class="hint">mpgw gör själv ingen tolkning av vad ett mail <em>betyder</em> — varje post i API-svaret är bara rubrik och de fält en mall extraherat. Det är upp till din klient att strukturera datat (t.ex. avgöra om ett mail är en bokning eller en avbokning genom att läsa ett extraherat fält eller mallnamnet). Trådfunktionen hjälper till att koppla ihop poster, men har samma princip: den vet bara vilka fält som bildar nyckeln och vilka värden som öppnar/stänger.</p>
+</section>
+
+<section id="datamodell">
+<h2>Datamodell</h2>
+<table class="table">
+    <thead><tr><th>Begrepp</th><th>Betydelse</th></tr></thead>
+    <tbody>
+        <tr><td><strong>Applikation</strong></td><td>En källa att bevaka: en eller flera mailboxar + mallar. API-nyckeln är knuten till en applikation.</td></tr>
+        <tr><td><strong>Mall</strong></td><td>Villkor (avsändare/ämne) för vilka mail som hör till mallen, plus <em>regler</em> som extraherar fält. Mallar prövas i prioritetsordning (lägst nummer först), första träff vinner.</td></tr>
+        <tr><td><strong>Post (record)</strong></td><td>Resultatet av ett mail som matchade en mall: status, träffgrad, tider och fälten. Ett mail ger högst en post.</td></tr>
+        <tr><td><strong>Fält</strong></td><td>Namn → värde som en regel extraherat, t.ex. <code>guest_name</code>. Värdet är en textsträng, eller <code>null</code> om regeln inte träffade.</td></tr>
+        <tr><td><strong>Status</strong></td><td><code>success</code> = alla regler träffade. <code>partial</code> = några men inte alla. <code>failed</code> = inga regler träffade (eller inga regler).</td></tr>
+        <tr><td><strong>Träffgrad</strong> (<code>match_rate</code>)</td><td>Andelen regler som träffade, 0–1.</td></tr>
+        <tr><td><strong>Tråd</strong></td><td>Valfri koppling mellan poster som hör till samma ärende (bokning → avbokning). Se <a href="#trader">Trådar</a>.</td></tr>
+        <tr><td><strong>Larm</strong></td><td>Något mpgw upptäckt (delvis matchning, trådavvikelse, saknad mall, brevlåda som inte går att nå). Syns i admin och via <code>GET /alerts</code>.</td></tr>
+    </tbody>
+</table>
+<p class="hint">Mail som inte matchar någon mall ger ingen post och syns därför inte i API:t — bara i admin under Mailhistorik och som larm.</p>
 </section>
 
 <section id="autentisering">
@@ -33,7 +57,7 @@
 <p>Alla anrop mot <code>/api/v1/*</code> (utom <code>/health</code>) kräver headern:</p>
 <pre class="code-block">X-API-Key: mpgw_xxxxxxxxxxxxxxxxxxxxxxxx</pre>
 <p>En nyckel skapas under <strong>API-nycklar → Ny nyckel</strong> och är knuten till <strong>exakt en applikation</strong> — den kan bara läsa data för den applikationen, aldrig andras. Den fulla nyckeln visas endast en gång vid skapande; mpgw lagrar aldrig den hemliga delen i klartext (bara en SHA-256-hash), så en tappad nyckel går inte att återskapa — skapa en ny istället.</p>
-<p>Ogiltig eller saknad nyckel ger <code>401 Unauthorized</code>.</p>
+<p>Nyckeln kan vara <strong>återkallad</strong> (inaktiverad) eller ha ett <strong>utgångsdatum</strong>; båda ger <code>401</code>. Skicka aldrig nyckeln i adressen (query string) — bara i headern. Lägg den i serverns konfiguration, inte i klientkoden.</p>
 </section>
 
 <section id="scopes">
@@ -53,11 +77,26 @@
 
 <section id="rate-limiting">
 <h2>Rate limiting</h2>
-<p>Varje nyckel har en gräns per minut (standardvärde, eller en egen gräns satt vid skapande). Vid överskriden gräns svarar API:t:</p>
+<p>Varje nyckel har en gräns för antal anrop per minut. Standardgränsen är <strong>600 per minut</strong> (miljövariabeln <code>API_DEFAULT_RATE_LIMIT_PER_MINUTE</code>); en nyckel kan ha en egen gräns under API-nycklar. Räknaren nollställs vid varje ny klockminut. Det finns inga <code>X-RateLimit-*</code>-headrar; gränsen märks först när den är nådd:</p>
 <pre class="code-block">HTTP/1.1 429 Too Many Requests
 Retry-After: 60
 
 {"error": {"code": "rate_limited", "message": "För många anrop, försök igen om en stund."}}</pre>
+<p>Ett anrop räknas även om det avvisas med 403/404. <code>/health</code> räknas inte (ingen nyckel).</p>
+</section>
+
+<section id="konventioner">
+<h2>Konventioner</h2>
+<ul>
+    <li><strong>Format:</strong> alla svar är JSON (<code>application/json</code>, UTF-8, ingen escapning av å/ä/ö). Endast <code>GET</code> finns — API:t är skrivskyddat.</li>
+    <li><strong>Svarsstruktur:</strong> <code>{"data": …}</code>; listor har även <code>"meta"</code> (se nedan). Fel har <code>{"error": …}</code>.</li>
+    <li><strong>Paginering:</strong> <code>page</code> (från 1) och <code>per_page</code> (1–200, standard 50). Svaret har <code>meta</code> med <code>page</code>, <code>per_page</code> och <code>total</code> (antal träffar med ditt filter). Hämta tills du har <code>total</code> poster.</li>
+    <li><strong>Sortering:</strong> listan <code>/records</code> är sorterad på <code>processed_at</code>, senaste först. Ordningen går inte att ändra.</li>
+    <li><strong>Tidszoner:</strong> <code>received_at</code> är mailets egen tid (Date-headern) i <strong>UTC</strong>. <code>processed_at</code> och <code>created_at</code> skrivs av databasen i <strong>serverns lokala tid (svensk tid)</strong>. Båda är <code>YYYY-MM-DD HH:MM:SS</code> utan tidszonsangivelse. Fältet <code>fields.sent_at</code> (om mallen har det) är Date-headern som den stod i mailet, med tidszon, t.ex. <code>Fri, 23 Oct 2026 12:17:52 +0000</code> — det är den säkraste källan för "när skickades mailet".</li>
+    <li><strong>Fält som saknas:</strong> ett fält vars regel inte träffade finns kvar i <code>fields</code> med värdet <code>null</code>. Vilka fält som finns bestäms helt av mallens regler.</li>
+    <li><strong>Okända query-parametrar</strong> ignoreras utan fel. Ett okänt värde på <code>thread_state</code> ignoreras (inget filter), medan ett okänt <code>status</code> eller <code>template_id</code> helt enkelt inte matchar något och ger en tom lista.</li>
+    <li><strong>Versionering:</strong> adressen innehåller <code>/v1</code>. Nya fält kan tillkomma i svar utan att versionen ändras — ignorera fält du inte känner till. Se <a href="#andringar">Ändringar</a>.</li>
+</ul>
 </section>
 
 <section id="felformat">
@@ -67,16 +106,29 @@ Retry-After: 60
 <table class="table">
     <thead><tr><th>HTTP-status</th><th>code</th><th>Orsak</th></tr></thead>
     <tbody>
-        <tr><td>401</td><td><code>unauthorized</code></td><td>Header <code>X-API-Key</code> saknas, är ogiltig, återkallad eller utgången</td></tr>
+        <tr><td>401</td><td><code>unauthorized</code></td><td>Header <code>X-API-Key</code> saknas, är ogiltig, återkallad eller utgången (meddelandet anger vilket)</td></tr>
         <tr><td>403</td><td><code>insufficient_scope</code></td><td>Nyckeln saknar det scope endpointen kräver</td></tr>
         <tr><td>404</td><td><code>not_found</code></td><td>Ingen post med angivet uuid, eller den tillhör en annan applikation</td></tr>
-        <tr><td>429</td><td><code>rate_limited</code></td><td>Anropsgränsen för nyckeln är nådd den här minuten</td></tr>
+        <tr><td>429</td><td><code>rate_limited</code></td><td>Anropsgränsen för nyckeln är nådd den här minuten (se <code>Retry-After</code>)</td></tr>
     </tbody>
 </table>
 </section>
 
 <section id="endpoints">
 <h2>Endpoints</h2>
+<p>Alla adresser ligger under <code>https://mp.larssons.space</code>. Sammanfattning:</p>
+<table class="table">
+    <thead><tr><th>Anrop</th><th>Scope</th><th>Beskrivning</th></tr></thead>
+    <tbody>
+        <tr><td><code>GET /api/v1/health</code></td><td>ingen</td><td>Driftkoll</td></tr>
+        <tr><td><code>GET /api/v1/records</code></td><td><code>records:read</code></td><td>Lista poster, valfritt med alla fält</td></tr>
+        <tr><td><code>GET /api/v1/records/{uuid}</code></td><td><code>records:read</code></td><td>En post med fält</td></tr>
+        <tr><td><code>GET /api/v1/records/{uuid}/raw</code></td><td><code>records:read</code> + <code>records:read:raw</code></td><td>Rått mailinnehåll</td></tr>
+        <tr><td><code>GET /api/v1/applications</code></td><td><code>templates:read</code></td><td>Nyckelns applikation</td></tr>
+        <tr><td><code>GET /api/v1/templates</code></td><td><code>templates:read</code></td><td>Mallar för applikationen</td></tr>
+        <tr><td><code>GET /api/v1/alerts</code></td><td><code>alerts:read</code></td><td>Ej lösta larm</td></tr>
+    </tbody>
+</table>
 
 <h3><code>GET /api/v1/health</code></h3>
 <p>Ingen autentisering krävs. Enkel drifttest.</p>
@@ -85,57 +137,84 @@ Retry-After: 60
 {"data": {"status": "ok", "time": "2026-09-15T09:00:00+00:00"}}</pre>
 
 <h3><code>GET /api/v1/records</code></h3>
-<p>Kräver <code>records:read</code>. Listar extraherade poster för nyckelns applikation, paginerat.</p>
-<p><strong>Query-parametrar:</strong> <code>page</code> (default 1), <code>per_page</code> (default 50, max 200), <code>status</code> (<code>success</code>/<code>partial</code>/<code>failed</code>), <code>template_id</code>.</p>
+<p>Kräver <code>records:read</code>. Listar poster för nyckelns applikation (alla mallar), paginerat, senast bearbetade först.</p>
+<table class="table">
+    <thead><tr><th>Parameter</th><th>Värden</th><th>Beskrivning</th></tr></thead>
+    <tbody>
+        <tr><td><code>page</code></td><td>heltal ≥ 1, standard 1</td><td>Sida</td></tr>
+        <tr><td><code>per_page</code></td><td>1–200, standard 50</td><td>Poster per sida</td></tr>
+        <tr><td><code>status</code></td><td><code>success</code>, <code>partial</code>, <code>failed</code></td><td>Filtrera på status</td></tr>
+        <tr><td><code>template_id</code></td><td>heltal (id från <code>/templates</code>)</td><td>Bara poster från en mall</td></tr>
+        <tr><td><code>thread_state</code></td><td><code>open</code>, <code>closed</code></td><td>Bara poster i trådar som är öppna/stängda (poster utan tråd utesluts)</td></tr>
+        <tr><td><code>thread_id</code></td><td>ett <code>thread_id</code> från ett tidigare svar</td><td>Alla poster i en viss tråd</td></tr>
+        <tr><td><code>include</code></td><td><code>fields</code></td><td><code>include=fields</code> lägger till <code>fields</code> på varje post — alla fält i <strong>ett</strong> anrop i stället för ett per post</td></tr>
+    </tbody>
+</table>
+<p><strong>Fält i varje post:</strong></p>
+<table class="table">
+    <thead><tr><th>Fält</th><th>Typ</th><th>Beskrivning</th></tr></thead>
+    <tbody>
+        <tr><td><code>id</code></td><td>sträng (uuid)</td><td>Postens id, används mot <code>/records/{uuid}</code></td></tr>
+        <tr><td><code>application</code></td><td>sträng</td><td>Applikationens namn</td></tr>
+        <tr><td><code>template</code></td><td>sträng</td><td>Namnet på mallen som matchade</td></tr>
+        <tr><td><code>status</code></td><td>sträng</td><td><code>success</code> / <code>partial</code> / <code>failed</code></td></tr>
+        <tr><td><code>match_rate</code></td><td>tal 0–1</td><td>Andel regler som träffade</td></tr>
+        <tr><td><code>received_at</code></td><td>sträng eller null</td><td>Mailets egen tid (UTC)</td></tr>
+        <tr><td><code>processed_at</code></td><td>sträng</td><td>När mpgw bearbetade mailet (serverns lokala tid)</td></tr>
+        <tr><td><code>thread_id</code></td><td>sträng eller null</td><td>Trådens id (se <a href="#trader">Trådar</a>)</td></tr>
+        <tr><td><code>thread_sequence</code></td><td>heltal eller null</td><td>Postens ordning i tråden, från 1</td></tr>
+        <tr><td><code>thread_event</code></td><td><code>open</code> / <code>close</code> / null</td><td>Om mailet öppnar eller stänger tråden</td></tr>
+        <tr><td><code>thread_state</code></td><td><code>open</code> / <code>closed</code> / null</td><td>Trådens nuvarande läge (samma för alla poster i tråden)</td></tr>
+        <tr><td><code>thread_anomaly</code></td><td>sträng eller null</td><td><code>close_without_open</code>, <code>duplicate_close</code> eller <code>duplicate_open</code></td></tr>
+        <tr><td><code>fields</code></td><td>objekt</td><td>Bara med <code>include=fields</code>. Fältnamn → värde (sträng eller null)</td></tr>
+    </tbody>
+</table>
 <pre class="code-block">curl -H "X-API-Key: mpgw_xxx" \
-  "https://mp.larssons.space/api/v1/records?status=success&per_page=50"
+  "https://mp.larssons.space/api/v1/records?include=fields&amp;per_page=200"
 
 {
   "data": [
     {
       "id": "7e7724d4-aeba-402f-a173-2d12d408ecf6",
       "application": "Boappa bokningar",
-      "template": "Bokning",
+      "template": "Avbokning",
       "status": "success",
       "match_rate": 1,
-      "processed_at": "2026-09-14 14:41:27"
+      "received_at": "2026-10-23 12:17:52",
+      "processed_at": "2026-10-26 14:25:30",
+      "thread_id": "b0bb4fb86700-2",
+      "thread_sequence": 2,
+      "thread_event": "close",
+      "thread_state": "closed",
+      "thread_anomaly": null,
+      "fields": {
+        "event_type": "Avbokning",
+        "guest_name": "Anna Andersson",
+        "apartment_number": "101",
+        "facility": "Gästrum 1",
+        "start_date": "24-10-2026",
+        "start_time": "12:00 24-10-2026",
+        "sent_at": "Fri, 23 Oct 2026 12:17:52 +0000"
+      }
     }
   ],
-  "meta": {"page": 1, "per_page": 50, "total": 1}
+  "meta": {"page": 1, "per_page": 200, "total": 19}
 }</pre>
 
 <h3><code>GET /api/v1/records/{uuid}</code></h3>
-<p>Kräver <code>records:read</code>. Samma fält som ovan plus <code>fields</code> — nyckel/värde för varje fält mallen extraherat (obundet till fasta kolumner, mallen definierar fritt vilka fält som finns).</p>
+<p>Kräver <code>records:read</code>. Samma fält som i listan plus alltid <code>fields</code>. 404 om uuid saknas eller tillhör en annan applikation.</p>
 <pre class="code-block">curl -H "X-API-Key: mpgw_xxx" \
   https://mp.larssons.space/api/v1/records/7e7724d4-aeba-402f-a173-2d12d408ecf6
 
-{
-  "data": {
-    "id": "7e7724d4-aeba-402f-a173-2d12d408ecf6",
-    "application": "Boappa bokningar",
-    "template": "Bokning",
-    "status": "success",
-    "match_rate": 1,
-    "processed_at": "2026-09-14 14:41:27",
-    "fields": {
-      "event_type": "bokning",
-      "apartment_number": "452",
-      "facility": "Gästrum 1",
-      "start_date": "06-11-2026",
-      "end_date": "06-11-2026",
-      "guest_name": "Anna-Karin Oterhals"
-    }
-  }
-}</pre>
-<p class="hint">Exemplet visar hur en klient kan läsa <code>fields.event_type</code> för att själv avgöra om posten är en bokning eller avbokning — mpgw har bara extraherat vad mallens regler pekar ut, ingen inbyggd tolkning.</p>
+{"data": {"id": "7e7724d4-…", "template": "Avbokning", "status": "success", "fields": {"guest_name": "Anna Andersson"}}}</pre>
 
 <h3><code>GET /api/v1/records/{uuid}/raw</code></h3>
-<p>Kräver <strong>både</strong> <code>records:read</code> och <code>records:read:raw</code>. Returnerar rått mailinnehåll.</p>
+<p>Kräver <strong>både</strong> <code>records:read</code> och <code>records:read:raw</code>, annars 403. Returnerar rått mailinnehåll (kan innehålla personuppgifter). Mailet kan ha raderats enligt gallringsreglerna; då saknas posten också.</p>
 <pre class="code-block">{
   "data": {
-    "from": "styrelsen@brflinneasutsikt.se",
-    "subject": "En ny bokning",
-    "received_at": "2026-09-14 07:54:36",
+    "from": "no-reply@boappa.se",
+    "subject": "Avbokning av Gästrum 1",
+    "received_at": "2026-10-23 12:17:52",
     "raw_headers": "...",
     "raw_body": "..."
   }
@@ -146,22 +225,73 @@ Retry-After: 60
 <pre class="code-block">{"data": [{"id": 2, "name": "Boappa bokningar", "is_active": 1}]}</pre>
 
 <h3><code>GET /api/v1/templates</code></h3>
-<p>Kräver <code>templates:read</code>. Mallar för nyckelns applikation.</p>
-<pre class="code-block">{"data": [{"id": 2, "application_id": 2, "name": "Bokning", "priority": 20, "is_active": 1}]}</pre>
+<p>Kräver <code>templates:read</code>. Alla mallar för nyckelns applikation, även inaktiva (<code>is_active</code> 0), sorterade på <code>priority</code> (lägst först). <code>id</code> används som <code>template_id</code>-filter mot <code>/records</code>.</p>
+<pre class="code-block">{"data": [{"id": 3, "application_id": 2, "name": "Avbokning", "priority": 10, "is_active": 1}, {"id": 2, "application_id": 2, "name": "Bokning", "priority": 20, "is_active": 1}]}</pre>
 
 <h3><code>GET /api/v1/alerts</code></h3>
-<p>Kräver <code>alerts:read</code>. Öppna larm för nyckelns applikation (format-ändringar, IMAP-fel).</p>
-<pre class="code-block">{"data": [{"id": 1, "type": "no_template_match", "severity": "warning", "status": "open", "created_at": "...", "application_name": "Boappa bokningar"}]}</pre>
+<p>Kräver <code>alerts:read</code>. Larm som inte är lösta (<code>open</code> eller <code>acknowledged</code>) för nyckelns applikation, senaste först, högst 100.</p>
+<table class="table">
+    <thead><tr><th>Fält</th><th>Värden</th></tr></thead>
+    <tbody>
+        <tr><td><code>type</code></td><td><code>low_match_rate</code> (mail matchade bara delvis), <code>thread_anomaly</code> (avvikelse i en tråd), <code>no_template_match</code>, <code>rule_zero_hits</code>, <code>imap_connection_failed</code></td></tr>
+        <tr><td><code>severity</code></td><td><code>info</code>, <code>warning</code>, <code>critical</code></td></tr>
+        <tr><td><code>status</code></td><td><code>open</code>, <code>acknowledged</code> (lösta visas inte)</td></tr>
+        <tr><td><code>created_at</code>, <code>application_name</code>, <code>id</code></td><td>Tid (serverns lokala tid), applikationens namn, larmets id</td></tr>
+    </tbody>
+</table>
+<pre class="code-block">{"data": [{"id": 1, "type": "low_match_rate", "severity": "warning", "status": "open", "created_at": "2026-10-26 12:10:00", "application_name": "Boappa bokningar"}]}</pre>
+</section>
+
+<section id="trader">
+<h2>Trådar</h2>
+<p>En <strong>tråd</strong> kopplar ihop poster som hör till samma ärende, t.ex. en bokning och dess avbokning. Det konfigureras per applikation under fliken <em>Trådar</em>: vilka fält som tillsammans identifierar ärendet (<em>nyckelfält</em>), vilket fält som avgör om ett mail öppnar eller stänger (<em>händelsefält</em>) och vilka värden som öppnar respektive stänger. Jämförelsen är skiftlägesokänslig.</p>
+<ul>
+    <li>En tråd är en livscykel: ett mail <strong>öppnar</strong> den, ett mail <strong>stänger</strong> den. En ny öppning efter en stängd tråd startar en <strong>ny tråd</strong> för samma nyckel (t.ex. omboka efter avbokning).</li>
+    <li>Posterna ordnas efter mailets egen tid (<code>received_at</code>), så resultatet blir detsamma oavsett i vilken ordning mailen importerats.</li>
+    <li><code>thread_id</code> har formen <code>&lt;12 tecken&gt;-&lt;löpnummer&gt;</code>: de första tecknen identifierar nyckeln (samma gäst/lägenhet/facilitet/datum), löpnumret anger vilken livscykel. Id:t är stabilt så länge nyckeln och ordningen är oförändrad.</li>
+    <li><code>thread_state</code> är <code>closed</code> när tråden stängts, annars <code>open</code>. Alla poster i en tråd har samma läge.</li>
+    <li>Poster där alla nyckelfält inte träffade, eller där händelsefältets värde varken öppnar eller stänger, ingår inte i någon tråd (alla <code>thread_*</code> är <code>null</code>).</li>
+</ul>
+<table class="table">
+    <thead><tr><th><code>thread_anomaly</code></th><th>Betydelse</th></tr></thead>
+    <tbody>
+        <tr><td><code>close_without_open</code></td><td>Ett stängande mail utan föregående öppnande (ett mail kan ha raderats eller aldrig kommit)</td></tr>
+        <tr><td><code>duplicate_close</code></td><td>Ett stängande mail när tråden redan var stängd (troligen omskickat)</td></tr>
+        <tr><td><code>duplicate_open</code></td><td>Ett öppnande mail när tråden redan var öppen (troligen omskickat)</td></tr>
+    </tbody>
+</table>
+<p>Avvikelser ger även ett larm av typen <code>thread_anomaly</code>. Klienter bör inte debitera/räkna en post med <code>duplicate_open</code> två gånger.</p>
+<p class="hint">Typiskt klientflöde för "bokning + avbokning": hämta <code>/records?include=fields</code> en gång, gruppera på <code>thread_id</code> och läs tidpunkterna (<code>fields.sent_at</code>) för det öppnande och det stängande mailet i tråden.</p>
+</section>
+
+<section id="effektivt">
+<h2>Använd API:t effektivt</h2>
+<ul>
+    <li><strong>Ett anrop räcker oftast.</strong> <code>GET /records?include=fields&amp;per_page=200</code> ger alla poster med alla fält. Hämta inte varje post för sig via <code>/records/{uuid}</code>.</li>
+    <li><strong>Cacha.</strong> Nya mail importeras av cron (normalt några gånger per dygn eller oftare), så data ändras inte sekund för sekund. Spara svaret en stund hos klienten (exempelklienten <code>api-test</code> använder 10 minuter).</li>
+    <li><strong>Filtrera på servern.</strong> Använd <code>status</code>, <code>template_id</code>, <code>thread_state</code> och <code>thread_id</code> i stället för att hämta allt och filtrera själv när du bara behöver en del.</li>
+    <li><strong>Hantera 429.</strong> Vänta enligt <code>Retry-After</code> (60 sekunder) och försök igen; stressa inte API:t med omedelbara omförsök.</li>
+    <li><strong>Hämta rått mail sparsamt.</strong> <code>/raw</code> kräver ett anrop per post och innehåller personuppgifter.</li>
+</ul>
 </section>
 
 <section id="exempelklienter">
 <h2>Exempelklienter</h2>
-<p>Repot innehåller fristående, körbara exempel (ren cURL, ingen kod delad med applikationen) som visar hur ett externt system kan konsumera API:t:</p>
-<pre class="code-block"># JSON, inklusive extraherade fält
+<p>Repot innehåller ett fristående, körbart exempel (ren cURL, ingen kod delad med applikationen) som visar hur ett externt system kan konsumera API:t:</p>
+<pre class="code-block"># JSON, inklusive extraherade fält (ett listanrop med include=fields)
 php bin/fetch-records.php --key=mpgw_xxx --out=records.json --with-fields
 
 # CSV, filtrerat på status
 php bin/fetch-records.php --key=mpgw_xxx --out=records.csv --status=success --with-fields</pre>
 <p>Kör <code>php bin/fetch-records.php</code> utan argument för fullständig flagg-lista.</p>
+<p>Debiteringsunderlaget (<code>api-test</code>, separat webbsida) är ett exempel på en riktig konsument: ett anrop med <code>include=fields</code>, parning via trådar, tider från <code>fields.sent_at</code>/<code>fields.start_time</code>, export till Excel.</p>
+</section>
+
+<section id="andringar">
+<h2>Ändringar i API:t</h2>
+<ul>
+    <li><strong>2026-10:</strong> <code>include=fields</code> på <code>GET /records</code>; nya svarsfält <code>received_at</code> och <code>thread_*</code>; nya filter <code>thread_state</code> och <code>thread_id</code>; larmtypen <code>thread_anomaly</code>; standardgränsen för anrop höjd från 60 till 600 per minut.</li>
+    <li><strong>2026-09:</strong> första versionen (<code>/records</code>, <code>/records/{uuid}</code>, <code>/raw</code>, <code>/applications</code>, <code>/templates</code>, <code>/alerts</code>, <code>/health</code>).</li>
+</ul>
 </section>
 {% endblock %}

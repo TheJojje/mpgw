@@ -27,9 +27,8 @@ declare(strict_types=1);
  *   --status=...         Filtrera pa status (success|partial|failed).
  *   --template-id=...    Filtrera pa mall-id.
  *   --per-page=...        Sidstorlek mot API:t (default 200, max som API:t tillater).
- *   --with-fields          Hamta aven extraherade falt (fields) per record - listan
- *                           /records ger bara metadata, faltvardena kravs ett anrop
- *                           per record mot /records/{uuid}.
+ *   --with-fields          Hamta aven extraherade falt (fields) - skickas som
+ *                           include=fields i samma listanrop (inga extra anrop per record).
  *   --include-raw           Hamta aven raw_body/raw_headers per record (kraver
  *                            scope records:read:raw, gor ett extra anrop per record).
  */
@@ -206,17 +205,15 @@ $client = new MpgwApiClient($baseUrl, $apiKey);
 printf('[%s] Hamtar records fran %s...' . PHP_EOL, date('c'), $baseUrl);
 
 try {
+    if ($withFields) {
+        $filters['include'] = 'fields';
+    }
     $records = $client->fetchAllRecords($filters, $perPage);
 
-    if ($withFields || $includeRaw) {
+    // Ratt mail ar medvetet inte med i listan (PII) och kraver ett anrop per record.
+    if ($includeRaw) {
         foreach ($records as $i => $record) {
-            if ($withFields) {
-                $full = $client->fetchRecord($record['id']);
-                $records[$i]['fields'] = $full['fields'] ?? [];
-            }
-            if ($includeRaw) {
-                $records[$i]['raw'] = $client->fetchRecordRaw($record['id']);
-            }
+            $records[$i]['raw'] = $client->fetchRecordRaw($record['id']);
         }
     }
 
