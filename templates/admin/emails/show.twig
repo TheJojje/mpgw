@@ -27,8 +27,8 @@
         <h2>Om mailet</h2>
         <dl class="meta-list" style="margin-bottom:0;">
             <dt>Från</dt><dd>{{ email.from_address }}</dd>
-            <dt>Hämtat</dt><dd class="tabular">{{ email.fetched_at }}</dd>
-            <dt>Mottaget</dt><dd class="tabular">{{ email.received_at|default('okänt') }}</dd>
+            <dt>Skickat</dt><dd class="tabular">{{ sent_at|default('okänt') }}</dd>
+            <dt>Importerat</dt><dd class="tabular">{{ email.fetched_at }}</dd>
         </dl>
     </div>
     <div class="split-card-half">
@@ -69,6 +69,10 @@
         <svg class="ic chevron"><use href="#ic-chevron-right"></use></svg>
     </button>
     <div class="disclosure-body">
+        <dl class="meta-list" style="margin-bottom:12px;">
+            <dt>Skickat</dt><dd class="tabular">{{ sent_header|default(sent_at|default('okänt')) }}</dd>
+            <dt>Ämne</dt><dd>{{ email.subject|default('(inget ämne)') }}</dd>
+        </dl>
         <pre class="source-text">{%- if field_matches|length > 0 and email.normalized_text -%}
             {%- set cursor = 0 -%}
             {%- set segments = [] -%}

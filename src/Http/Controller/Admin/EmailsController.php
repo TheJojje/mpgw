@@ -214,12 +214,38 @@ final class EmailsController
             }
         }
 
+        [$sentAt, $sentHeader] = $this->sentAt($email);
+
         return $this->view->render($request, $response, 'emails/show.twig', [
             'email' => $email,
+            'sent_at' => $sentAt,
+            'sent_header' => $sentHeader,
             'record' => $record,
             'fields' => $fields,
             'field_matches' => $fieldMatches,
         ]);
+    }
+
+    /**
+     * När mailet skickades, enligt Date-headern i de råa headrarna (visas i
+     * svensk tid). Faller tillbaka på received_at om headern saknas/är
+     * oläsbar.
+     *
+     * @return array{0:?string,1:?string} [formaterad tid, Date-headern som den stod i mailet]
+     */
+    private function sentAt(array $email): array
+    {
+        $headers = preg_replace('/\r?\n[ \t]+/', ' ', (string) ($email['raw_headers'] ?? ''));
+        if (preg_match('/^Date:[ \t]*(.+?)\s*$/mi', (string) $headers, $m) === 1) {
+            try {
+                $sent = new \DateTimeImmutable($m[1]);
+                return [$sent->setTimezone(new \DateTimeZone('Europe/Stockholm'))->format('Y-m-d H:i:s'), $m[1]];
+            } catch (\Exception) {
+                // faller igenom till received_at
+            }
+        }
+
+        return [$email['received_at'] ?? null, null];
     }
 
     /**

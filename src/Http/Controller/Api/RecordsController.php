@@ -40,10 +40,11 @@ final class RecordsController
         $whereSql = 'WHERE ' . implode(' AND ', $where);
 
         $stmt = $this->db->prepare(
-            "SELECT er.*, t.name AS template_name, app.name AS application_name
+            "SELECT er.*, t.name AS template_name, app.name AS application_name, re.received_at
              FROM extracted_records er
              LEFT JOIN templates t ON t.id = er.template_id
              LEFT JOIN applications app ON app.id = t.application_id
+             LEFT JOIN raw_emails re ON re.id = er.raw_email_id
              {$whereSql}
              ORDER BY er.processed_at DESC
              LIMIT ? OFFSET ?"
@@ -77,10 +78,11 @@ final class RecordsController
     {
         $apiKey = $request->getAttribute('api_key');
         $stmt = $this->db->prepare(
-            'SELECT er.*, t.name AS template_name, app.name AS application_name
+            'SELECT er.*, t.name AS template_name, app.name AS application_name, re.received_at
              FROM extracted_records er
              LEFT JOIN templates t ON t.id = er.template_id
              LEFT JOIN applications app ON app.id = t.application_id
+             LEFT JOIN raw_emails re ON re.id = er.raw_email_id
              WHERE er.uuid = ? AND t.application_id = ?'
         );
         $stmt->execute([$args['uuid'], (int) $apiKey['application_id']]);
@@ -128,6 +130,7 @@ final class RecordsController
             'template' => $record['template_name'],
             'status' => $record['status'],
             'match_rate' => (float) $record['match_rate'],
+            'received_at' => $record['received_at'],
             'processed_at' => $record['processed_at'],
         ];
 

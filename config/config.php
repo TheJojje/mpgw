@@ -64,7 +64,7 @@ return [
         'match_rate_drop_threshold' => (float) ($_ENV['ALERT_MATCH_RATE_DROP_THRESHOLD'] ?? 0.20),
     ],
     'api' => [
-        'default_rate_limit_per_minute' => (int) ($_ENV['API_DEFAULT_RATE_LIMIT_PER_MINUTE'] ?? 60),
+        'default_rate_limit_per_minute' => (int) ($_ENV['API_DEFAULT_RATE_LIMIT_PER_MINUTE'] ?? 600),
     ],
     'smtp' => [
         'host' => $_ENV['SMTP_HOST'] ?? '',

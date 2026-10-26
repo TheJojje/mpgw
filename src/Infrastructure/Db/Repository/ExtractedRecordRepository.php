@@ -33,13 +33,20 @@ final class ExtractedRecordRepository
     /**
      * Ersatter mailets befintliga record(s) (och deras fält via ON DELETE
      * CASCADE) med ett nytt resultat, atomart. Anvands vid "Parsa om".
+     * processed_at bevaras: den motsvarar nar mailet togs emot/ingestades och
+     * anvands av API-konsumenter (t.ex. som avbokningstidpunkt), sa den far
+     * inte flyttas fram av en omparsning.
      */
     public function replaceResult(int $rawEmailId, ?int $templateId, RuleEngineResult $result): int
     {
         $this->db->beginTransaction();
         try {
+            $stmt = $this->db->prepare('SELECT MIN(processed_at) FROM extracted_records WHERE raw_email_id = ?');
+            $stmt->execute([$rawEmailId]);
+            $processedAt = $stmt->fetchColumn() ?: null;
+
             $this->db->prepare('DELETE FROM extracted_records WHERE raw_email_id = ?')->execute([$rawEmailId]);
-            $recordId = $this->insertResult($rawEmailId, $templateId, $result);
+            $recordId = $this->insertResult($rawEmailId, $templateId, $result, $processedAt);
             $this->db->commit();
             return $recordId;
         } catch (\Throwable $e) {
@@ -48,14 +55,14 @@ final class ExtractedRecordRepository
         }
     }
 
-    private function insertResult(int $rawEmailId, ?int $templateId, RuleEngineResult $result): int
+    private function insertResult(int $rawEmailId, ?int $templateId, RuleEngineResult $result, ?string $processedAt = null): int
     {
         $uuid = $this->generateUuid();
         $stmt = $this->db->prepare(
-            'INSERT INTO extracted_records (uuid, raw_email_id, template_id, status, match_rate)
-             VALUES (?, ?, ?, ?, ?)'
+            'INSERT INTO extracted_records (uuid, raw_email_id, template_id, status, match_rate, processed_at)
+             VALUES (?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))'
         );
-        $stmt->execute([$uuid, $rawEmailId, $templateId, $result->status, $result->matchRate]);
+        $stmt->execute([$uuid, $rawEmailId, $templateId, $result->status, $result->matchRate, $processedAt]);
         $recordId = (int) $this->db->lastInsertId();
 
         $fieldStmt = $this->db->prepare(
