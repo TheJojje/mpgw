@@ -170,8 +170,15 @@ final class EmailsController
         );
         $stmt->execute($args);
 
+        // received_at ar mailets Date-header lagrad i serverns tidszon; visas
+        // i svensk tid pa samma satt som "Skickat" pa show-sidan.
+        $emails = array_map(function (array $email): array {
+            $email['sent_at'] = $this->toStockholm($email['received_at'] ?? null);
+            return $email;
+        }, $stmt->fetchAll());
+
         return $this->view->render($request, $response, 'emails/index.twig', [
-            'emails' => $stmt->fetchAll(),
+            'emails' => $emails,
             'search' => $search,
             'status_filter' => $status,
             'application_filter' => $applicationId,
@@ -224,6 +231,17 @@ final class EmailsController
             'fields' => $fields,
             'field_matches' => $fieldMatches,
         ]);
+    }
+
+    private function toStockholm(?string $dateTime): ?string
+    {
+        if ($dateTime === null || $dateTime === '') {
+            return null;
+        }
+
+        return (new \DateTimeImmutable($dateTime))
+            ->setTimezone(new \DateTimeZone('Europe/Stockholm'))
+            ->format('Y-m-d H:i:s');
     }
 
     /**

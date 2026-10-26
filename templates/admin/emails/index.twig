@@ -32,10 +32,11 @@
 {% if emails|length > 0 %}
 <div class="table-wrap">
     <table class="table">
-        <thead><tr><th>Hämtat</th><th>Från</th><th>Ämne</th><th>Status</th>{% if can('emails.manage') %}<th></th>{% endif %}</tr></thead>
+        <thead><tr><th>Skickat</th><th>Importerat</th><th>Från</th><th>Ämne</th><th>Status</th>{% if can('emails.manage') %}<th></th>{% endif %}</tr></thead>
         <tbody>
         {% for email in emails %}
             <tr class="clickable" onclick="window.location='/admin/emails/{{ email.uuid }}'">
+                <td class="tabular muted">{{ email.sent_at|default('okänt') }}</td>
                 <td class="tabular muted">{{ email.fetched_at }}</td>
                 <td>{{ email.from_address }}</td>
                 <td>{{ email.subject|default('(inget ämne)') }}</td>
