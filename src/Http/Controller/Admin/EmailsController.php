@@ -17,6 +17,7 @@ use Mpgw\Service\AuditLogger;
 use Mpgw\Service\HtmlToTextNormalizer;
 use Mpgw\Service\RuleEngine;
 use Mpgw\Service\TemplateMatcher;
+use Mpgw\Service\ThreadService;
 use Mpgw\Support\FlashMessage;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -38,6 +39,7 @@ final class EmailsController
         private readonly HtmlToTextNormalizer $normalizer,
         private readonly ExtractedRecordRepository $records,
         private readonly IngestLogRepository $ingestLog,
+        private readonly ThreadService $threads,
     ) {
     }
 
@@ -54,7 +56,11 @@ final class EmailsController
         }
 
         $userId = !empty($_SESSION['admin_user_id']) ? (int) $_SESSION['admin_user_id'] : null;
+        $threadKey = $this->threads->keyForRawEmail((int) $email['id']);
         $this->deletedEmails->deleteEmailWithTombstone($email, $userId);
+        if ($threadKey !== null) {
+            $this->threads->rebuildKey($threadKey); // radering kan oppna/stanga en trad pa nytt
+        }
 
         $this->audit->log('emails', 'deleted', $userId, 'raw_email', (int) $email['id'], 'Mail raderades', [
             'uuid' => $email['uuid'],
@@ -109,8 +115,10 @@ final class EmailsController
             $rules,
             $email['normalized_text'],
             $this->normalizer->normalize((string) $email['subject'], false),
+            $this->normalizer->normalizeHeaders((string) $email['raw_headers']),
         );
-        $this->records->replaceResult((int) $email['id'], (int) $template['id'], $result);
+        $recordId = $this->records->replaceResult((int) $email['id'], (int) $template['id'], $result);
+        $this->threads->syncRecord($recordId);
 
         $userId = !empty($_SESSION['admin_user_id']) ? (int) $_SESSION['admin_user_id'] : null;
         $this->ingestLog->log(
@@ -161,7 +169,7 @@ final class EmailsController
         $whereSql = $where === [] ? '' : ' WHERE ' . implode(' AND ', $where);
 
         $stmt = $this->db->prepare(
-            'SELECT re.*, er.status
+            'SELECT re.*, er.status, er.thread_anomaly
              FROM raw_emails re
              LEFT JOIN extracted_records er ON er.raw_email_id = re.id
              LEFT JOIN mailboxes mb ON mb.id = re.mailbox_id'
@@ -216,6 +224,7 @@ final class EmailsController
                     $rules,
                     $email['normalized_text'],
                     $this->normalizer->normalize((string) $email['subject'], false),
+                    $this->normalizer->normalizeHeaders((string) $email['raw_headers']),
                 );
                 $fieldMatches = $this->charOffsetFieldsByName($engineResult->fields, $email['normalized_text']);
             }
@@ -223,10 +232,27 @@ final class EmailsController
 
         [$sentAt, $sentHeader] = $this->sentAt($email);
 
+        // Ovriga mail i samma trad (se ThreadService), i ordning.
+        $threadMails = [];
+        if ($record !== null && $record['thread_key'] !== null) {
+            $threadStmt = $this->db->prepare(
+                'SELECT er.thread_sequence, er.thread_event, er.thread_anomaly, re.uuid, re.subject, re.received_at
+                 FROM extracted_records er JOIN raw_emails re ON re.id = er.raw_email_id
+                 WHERE er.thread_key = ? AND er.thread_no = ?
+                 ORDER BY er.thread_sequence'
+            );
+            $threadStmt->execute([$record['thread_key'], $record['thread_no']]);
+            $threadMails = array_map(function (array $m): array {
+                $m['sent_at'] = $this->toStockholm($m['received_at']);
+                return $m;
+            }, $threadStmt->fetchAll());
+        }
+
         return $this->view->render($request, $response, 'emails/show.twig', [
             'email' => $email,
             'sent_at' => $sentAt,
             'sent_header' => $sentHeader,
+            'thread_mails' => $threadMails,
             'record' => $record,
             'fields' => $fields,
             'field_matches' => $fieldMatches,

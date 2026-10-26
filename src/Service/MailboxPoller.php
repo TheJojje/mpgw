@@ -44,6 +44,7 @@ final class MailboxPoller
         private readonly AuditLogger $audit,
         private readonly DeletedEmailRepository $deletedEmails,
         private readonly AlertRepository $alerts,
+        private readonly ThreadService $threads,
     ) {
     }
 
@@ -177,8 +178,10 @@ final class MailboxPoller
         $normalizedSubject = $this->normalizer->normalize($message['subject'] ?? '', false);
 
         $rules = $this->rules->activeForTemplate((int) $matchedTemplate['id']);
-        $result = $this->ruleEngine->run($rules, $normalizedText, $normalizedSubject);
-        $this->records->storeResult($rawEmailId, (int) $matchedTemplate['id'], $result);
+        $normalizedHeaders = $this->normalizer->normalizeHeaders((string) ($message['headers'] ?? ''));
+        $result = $this->ruleEngine->run($rules, $normalizedText, $normalizedSubject, $normalizedHeaders);
+        $recordId = $this->records->storeResult($rawEmailId, (int) $matchedTemplate['id'], $result);
+        $this->threads->syncRecord($recordId);
         $this->ingestLog->log($mailboxId, $rawEmailId, 'rule_engine_ran', $result->status);
 
         // Delvis matchning betyder oftast att avsandaren andrat mailformatet.

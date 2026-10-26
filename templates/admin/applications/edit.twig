@@ -20,6 +20,13 @@
         <label>Larm-webhook URL (valfritt)<input type="url" name="alert_webhook_url" value="{{ application.alert_webhook_url }}"></label>
         <label>Spara extraherad data i (dagar, tomt = för alltid)<input type="number" name="retention_days" min="1" value="{{ application.retention_days }}"></label>
         <label>Spara råmail i (dagar, tomt = för alltid)<input type="number" name="raw_email_retention_days" min="1" value="{{ application.raw_email_retention_days }}"></label>
+        <input type="hidden" name="thread_config" value="1">
+        <h3 style="margin:20px 0 4px;">Trådar (valfritt)</h3>
+        <p class="hint" style="margin:0 0 8px;">Koppla ihop mail som hör till samma ärende, t.ex. en bokning och dess avbokning. Lämna tomt för att inte använda trådar. Jämförelsen är skiftlägesokänslig.</p>
+        <label>Nyckelfält (kommaseparerade fältnamn som tillsammans identifierar samma ärende)<input type="text" name="thread_key_fields" value="{{ application.thread_key_fields }}" placeholder="guest_name, apartment_number, facility, start_date"></label>
+        <label>Händelsefält (fältet som avgör om mailet öppnar eller stänger en tråd)<input type="text" name="thread_event_field" value="{{ application.thread_event_field }}" placeholder="event_type"></label>
+        <label>Värden som öppnar en tråd (kommaseparerade)<input type="text" name="thread_open_values" value="{{ application.thread_open_values }}" placeholder="Bokning"></label>
+        <label>Värden som stänger en tråd (kommaseparerade)<input type="text" name="thread_close_values" value="{{ application.thread_close_values }}" placeholder="Avbokning"></label>
         <div>
             <button type="submit" class="btn btn-primary">Spara ändringar</button>
         </div>

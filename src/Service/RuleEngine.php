@@ -21,14 +21,18 @@ final class RuleEngine
     /**
      * @param array<int,array{id:int,field_name:string,pattern:string,is_required:bool,source?:string}> $rules
      */
-    public function run(array $rules, string $normalizedBody, string $normalizedSubject = ''): RuleEngineResult
+    public function run(array $rules, string $normalizedBody, string $normalizedSubject = '', string $normalizedHeaders = ''): RuleEngineResult
     {
         $fields = [];
         $matchedCount = 0;
         $missingRequired = [];
 
         foreach ($rules as $rule) {
-            $text = ($rule['source'] ?? 'body') === 'subject' ? $normalizedSubject : $normalizedBody;
+            $text = match ($rule['source'] ?? 'body') {
+                'subject' => $normalizedSubject,
+                'headers' => $normalizedHeaders,
+                default => $normalizedBody,
+            };
             $result = $this->tester->test($rule['pattern'], $text);
 
             $fields[] = [

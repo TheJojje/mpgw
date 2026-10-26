@@ -11,6 +11,7 @@ use Mpgw\Infrastructure\Db\Repository\MailboxRepository;
 use Mpgw\Infrastructure\Db\Repository\TemplateRepository;
 use Mpgw\Service\AuditLogger;
 use Mpgw\Service\CredentialCipher;
+use Mpgw\Service\ThreadService;
 use Mpgw\Support\FlashMessage;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -26,6 +27,7 @@ final class ApplicationsController
         private readonly TemplateRepository $templates,
         private readonly CredentialCipher $cipher,
         private readonly AuditLogger $audit,
+        private readonly ThreadService $threads,
     ) {
     }
 
@@ -161,6 +163,22 @@ final class ApplicationsController
             $retentionDays,
             $rawEmailRetentionDays,
         );
+
+        // Tradinstallningar skickas bara fran den fristaende edit-sidan (inte
+        // fran inline-formularet i listan) - rora dem inte om de saknas.
+        if (isset($data['thread_config'])) {
+            $threadConfig = [
+                'thread_key_fields' => $this->csvList($data['thread_key_fields'] ?? ''),
+                'thread_event_field' => trim((string) ($data['thread_event_field'] ?? '')) ?: null,
+                'thread_open_values' => $this->csvList($data['thread_open_values'] ?? ''),
+                'thread_close_values' => $this->csvList($data['thread_close_values'] ?? ''),
+            ];
+            if ($threadConfig != array_intersect_key($application, $threadConfig)) {
+                $this->applications->updateThreading($applicationId, $threadConfig);
+                $recordCount = $this->threads->syncApplication($applicationId);
+                $this->audit->log('applications', 'threads_configured', $this->currentUserId(), 'application', $applicationId, "Tråd-inställningar för {$name} ändrades ({$recordCount} records omberäknade)", $threadConfig);
+            }
+        }
 
         $this->audit->log('applications', 'updated', $this->currentUserId(), 'application', $applicationId, "Applikation {$name} uppdaterades", [
             'name' => $name,
@@ -365,5 +383,11 @@ final class ApplicationsController
     private function currentUserId(): ?int
     {
         return !empty($_SESSION['admin_user_id']) ? (int) $_SESSION['admin_user_id'] : null;
+    }
+
+    private function csvList(mixed $value): ?string
+    {
+        $items = array_values(array_filter(array_map('trim', explode(',', (string) $value)), static fn (string $v): bool => $v !== ''));
+        return $items === [] ? null : implode(', ', $items);
     }
 }

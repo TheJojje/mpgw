@@ -68,6 +68,22 @@ final class ApplicationRepository
         return $stmt->rowCount() > 0;
     }
 
+    /** @param array{thread_key_fields:?string,thread_event_field:?string,thread_open_values:?string,thread_close_values:?string} $config */
+    public function updateThreading(int $id, array $config): void
+    {
+        $this->db->prepare(
+            'UPDATE applications
+             SET thread_key_fields = ?, thread_event_field = ?, thread_open_values = ?, thread_close_values = ?
+             WHERE id = ?'
+        )->execute([
+            $config['thread_key_fields'],
+            $config['thread_event_field'],
+            $config['thread_open_values'],
+            $config['thread_close_values'],
+            $id,
+        ]);
+    }
+
     /**
      * Soft-delete: applikationen behalls (mailboxes/mallar/raw_emails
      * refererar den), men doljs fran pollingen - se

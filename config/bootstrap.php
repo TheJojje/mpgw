@@ -51,6 +51,7 @@ use Mpgw\Service\RegexSuggester;
 use Mpgw\Service\RetentionService;
 use Mpgw\Service\RuleEngine;
 use Mpgw\Service\TemplateMatcher;
+use Mpgw\Service\ThreadService;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -101,6 +102,11 @@ $container->set(RetentionService::class, fn (Container $c) => new RetentionServi
     $c->get(AuditLogger::class),
 ));
 
+$container->set(ThreadService::class, fn (Container $c) => new ThreadService(
+    $c->get(PDO::class),
+    $c->get(AlertRepository::class),
+));
+
 $container->set(MailboxPoller::class, fn (Container $c) => new MailboxPoller(
     $c->get(MailboxRepository::class),
     $c->get(RawEmailRepository::class),
@@ -116,6 +122,7 @@ $container->set(MailboxPoller::class, fn (Container $c) => new MailboxPoller(
     $c->get(AuditLogger::class),
     $c->get(DeletedEmailRepository::class),
     $c->get(AlertRepository::class),
+    $c->get(ThreadService::class),
 ));
 
 // --------------------------------------------------------------------
@@ -174,6 +181,7 @@ $container->set(ApplicationsController::class, fn (Container $c) => new Applicat
     $c->get(TemplateRepository::class),
     $c->get(CredentialCipher::class),
     $c->get(AuditLogger::class),
+    $c->get(ThreadService::class),
 ));
 $container->set(TemplatesController::class, fn (Container $c) => new TemplatesController(
     $c->get(ViewRenderer::class),
@@ -211,6 +219,7 @@ $container->set(EmailsController::class, fn (Container $c) => new EmailsControll
     $c->get(HtmlToTextNormalizer::class),
     $c->get(ExtractedRecordRepository::class),
     $c->get(IngestLogRepository::class),
+    $c->get(ThreadService::class),
 ));
 $container->set(AlertsController::class, fn (Container $c) => new AlertsController(
     $c->get(ViewRenderer::class),

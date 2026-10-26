@@ -48,6 +48,7 @@
                     {% else %}
                         {{ status_chip('danger', 'Ej matchad') }}
                     {% endif %}
+                    {% if email.thread_anomaly %}{{ status_chip('warn', 'Tråd-avvikelse') }}{% endif %}
                 </td>
                 {% if can('emails.manage') %}
                 <td class="row-actions" onclick="event.stopPropagation()">

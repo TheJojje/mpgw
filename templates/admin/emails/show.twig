@@ -61,6 +61,33 @@
     </div>
 </div>
 
+{% if record and record.thread_key %}
+<div class="panel" style="margin-bottom:20px; padding:16px 20px;">
+    <h2 style="margin-top:0;">Tråd {{ record.thread_state == 'open' ? status_chip('warn', 'Öppen') : status_chip('ok', 'Stängd') }}</h2>
+    {% if record.thread_anomaly %}
+        <p class="flash flash-warning" style="margin:0 0 12px;">
+            {% if record.thread_anomaly == 'close_without_open' %}Det här mailet stänger en tråd som aldrig öppnades (saknas ett mail?).
+            {% elseif record.thread_anomaly == 'duplicate_close' %}Tråden var redan stängd när det här mailet kom (dubblett?).
+            {% elseif record.thread_anomaly == 'duplicate_open' %}Tråden var redan öppen när det här mailet kom (dubblett?).
+            {% else %}{{ record.thread_anomaly }}{% endif %}
+        </p>
+    {% endif %}
+    <table class="table">
+        <thead><tr><th>#</th><th>Händelse</th><th>Skickat</th><th>Ämne</th></tr></thead>
+        <tbody>
+        {% for m in thread_mails %}
+            <tr{% if m.uuid != email.uuid %} class="clickable" onclick="window.location='/admin/emails/{{ m.uuid }}'"{% endif %}>
+                <td>{{ m.thread_sequence }}</td>
+                <td>{{ m.thread_event == 'open' ? 'Öppnar' : 'Stänger' }}{% if m.thread_anomaly %} {{ status_chip('warn', 'Avvikelse') }}{% endif %}{% if m.uuid == email.uuid %} <span class="muted">(det här mailet)</span>{% endif %}</td>
+                <td class="tabular muted">{{ m.sent_at|default('okänt') }}</td>
+                <td>{{ m.subject|default('(inget ämne)') }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
 <div class="disclosure" id="raw-email-disclosure">
     <button type="button" class="disclosure-toggle" data-disclosure-toggle="raw-email-disclosure">
         <svg class="ic"><use href="#ic-mail"></use></svg>

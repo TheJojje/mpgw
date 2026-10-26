@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Mpgw\Http\Controller\Api;
 
 use Mpgw\Infrastructure\Db\Repository\RawEmailRepository;
+use Mpgw\Service\ThreadService;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -32,6 +33,15 @@ final class RecordsController
         if (!empty($params['status'])) {
             $where[] = 'er.status = ?';
             $args[] = $params['status'];
+        }
+        if (!empty($params['thread_state']) && in_array($params['thread_state'], ['open', 'closed'], true)) {
+            $where[] = 'er.thread_state = ?';
+            $args[] = $params['thread_state'];
+        }
+        if (!empty($params['thread_id']) && preg_match('/^([0-9a-f]{12})-(\d+)$/', (string) $params['thread_id'], $m) === 1) {
+            $where[] = 'er.thread_key LIKE ? AND er.thread_no = ?';
+            $args[] = $m[1] . '%';
+            $args[] = (int) $m[2];
         }
         if (!empty($params['template_id'])) {
             $where[] = 'er.template_id = ?';
@@ -132,6 +142,13 @@ final class RecordsController
             'match_rate' => (float) $record['match_rate'],
             'received_at' => $record['received_at'],
             'processed_at' => $record['processed_at'],
+            // Trad (null om applikationen inte anvander tradar eller mailet inte ingar i nagon):
+            // records med samma thread_id hor till samma arende, i ordning enligt thread_sequence.
+            'thread_id' => $record['thread_key'] !== null ? ThreadService::publicId($record['thread_key'], (int) $record['thread_no']) : null,
+            'thread_sequence' => $record['thread_sequence'] !== null ? (int) $record['thread_sequence'] : null,
+            'thread_event' => $record['thread_event'],
+            'thread_state' => $record['thread_state'],
+            'thread_anomaly' => $record['thread_anomaly'],
         ];
 
         if ($includeFields) {

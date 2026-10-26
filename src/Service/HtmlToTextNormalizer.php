@@ -12,6 +12,19 @@ namespace Mpgw\Service;
  */
 final class HtmlToTextNormalizer
 {
+    /**
+     * Raa mailheaders -> text som regler med source=headers kor mot: nyrader
+     * normaliserade och "vikta" headerrader (fortsattningsrader som borjar
+     * med blanksteg) hopslagna, sa att varje header ligger pa en egen rad.
+     */
+    public function normalizeHeaders(string $rawHeaders): string
+    {
+        $text = preg_replace('/\r\n?/', "\n", $rawHeaders) ?? $rawHeaders;
+        $text = preg_replace('/\n[ \t]+/', ' ', $text) ?? $text;
+
+        return trim($text);
+    }
+
     public function normalize(string $body, bool $isHtml): string
     {
         $text = $isHtml ? $this->htmlToText($body) : $body;

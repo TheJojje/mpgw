@@ -83,6 +83,9 @@
                 (inget ämne)
             {%- endif -%}</pre>
 
+        <h3 style="margin-top:14px;">Mail-headers <span class="hint" style="font-weight:400;">— också en körbar källa (t.ex. Date: för när mailet skickades)</span></h3>
+        <pre id="normalized-headers" class="source-text" data-source="headers" data-raw-email-id="{{ selected_raw_email_id|default('') }}" data-placeholder="{{ normalized_headers is empty ? '1' : '' }}" style="max-height:160px;">{{ normalized_headers|default('(välj ett mail ovan för att se headers)') }}</pre>
+
         <h3 style="margin-top:14px;">Normaliserad text <span class="hint" style="font-weight:400;">— det regler faktiskt körs mot</span></h3>
         <p class="hint" id="normalized-hint">
             {% if rule_matches|length > 0 %}
@@ -131,7 +134,7 @@
                 <div class="rule-row">
                     <div>
                         <div class="rule-name"><span class="rule-swatch"></span><strong>{{ rule.field_label|default(rule.field_name) }}</strong>
-                        <span class="muted">({{ rule.field_name }}{% if rule.is_required %}, obligatorisk{% endif %}{% if (rule.source|default('body')) == 'subject' %}, från ämnesrad{% endif %})</span></div>
+                        <span class="muted">({{ rule.field_name }}{% if rule.is_required %}, obligatorisk{% endif %}{% if (rule.source|default('body')) == 'subject' %}, från ämnesrad{% elseif (rule.source|default('body')) == 'headers' %}, från mail-headers{% endif %})</span></div>
                         <code>{{ rule.pattern }}</code>
                     </div>
                     <button type="button" class="btn btn-small edit-rule-btn"
@@ -170,6 +173,7 @@
                     <select name="source" id="rule-source">
                         <option value="body">Brödtext</option>
                         <option value="subject">Ämnesrad</option>
+                        <option value="headers">Mail-headers</option>
                     </select>
                 </label>
                 <label>Fältnamn (databasnyckel)<input type="text" name="field_name" id="rule-field-name" required pattern="[a-z][a-z0-9_]*" placeholder="order_number"></label>

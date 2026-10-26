@@ -4,6 +4,11 @@
     const templateId = document.getElementById('rule-summary')?.dataset.templateId;
     const normalizedTextEl = document.getElementById('normalized-text');
     const normalizedSubjectEl = document.getElementById('normalized-subject');
+    const normalizedHeadersEl = document.getElementById('normalized-headers');
+    const sourceLabels = { body: 'brödtext', subject: 'ämnesrad', headers: 'mail-headers' };
+    function sourceTextEl(source) {
+        return source === 'subject' ? normalizedSubjectEl : (source === 'headers' ? normalizedHeadersEl : normalizedTextEl);
+    }
     const newRulePanel = document.getElementById('new-rule-panel');
     const newRuleTitle = document.getElementById('new-rule-title');
     const selectionPreviewWrap = document.getElementById('selection-preview-wrap');
@@ -80,7 +85,7 @@
     // Bada kalltexterna (amnesrad och brodtext) anvander samma
     // markeringsflode - vilket element markeringen skedde i avgor bara
     // vilken source ('subject'/'body') som sparas med regeln.
-    [normalizedTextEl, normalizedSubjectEl].forEach((el) => {
+    [normalizedTextEl, normalizedSubjectEl, normalizedHeadersEl].forEach((el) => {
         el?.addEventListener('mouseup', () => onSelectionChange(el));
         el?.addEventListener('touchend', () => onSelectionChange(el));
     });
@@ -111,7 +116,7 @@
     async function openNewRulePanelFromSelection(sourceEl, fullText, start, end, selectedText) {
         resetRuleForm();
         const source = sourceEl.dataset.source || 'body';
-        newRuleTitle.textContent = 'Ny regel från markering (' + (source === 'subject' ? 'ämnesrad' : 'brödtext') + ')';
+        newRuleTitle.textContent = 'Ny regel från markering (' + (sourceLabels[source] || 'brödtext') + ')';
         selectionPreviewWrap.hidden = false;
         newRulePanel.hidden = false;
         selectedTextPreview.textContent = selectedText;
@@ -178,7 +183,7 @@
     // Textinnehallet aktuell regel ska testas mot, baserat pa vald source.
     function currentSourceText() {
         const source = document.getElementById('rule-source').value;
-        return (source === 'subject' ? normalizedSubjectEl : normalizedTextEl)?.textContent || '';
+        return sourceTextEl(source)?.textContent || '';
     }
 
     // --- Live-test vid redigering av monstret (eller vald kalla) ---------
@@ -317,7 +322,7 @@
     document.querySelectorAll('.rule-result').forEach(async (el) => {
         const pattern = el.dataset.pattern;
         const source = el.closest('li')?.dataset.source || 'body';
-        const fullText = (source === 'subject' ? normalizedSubjectEl : normalizedTextEl)?.textContent || '';
+        const fullText = sourceTextEl(source)?.textContent || '';
         if (!pattern || !hasNormalizedText) return;
 
         const res = await fetch('/admin/api/test-pattern', {

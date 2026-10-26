@@ -53,11 +53,13 @@ final class TemplatesController
         $selectedRawEmailId = isset($queryParams['raw_email_id']) ? (int) $queryParams['raw_email_id'] : null;
         $normalizedText = null;
         $normalizedSubject = null;
+        $normalizedHeaders = null;
 
         if ($selectedRawEmailId !== null) {
             $rawEmail = $this->rawEmails->find($selectedRawEmailId);
             $normalizedText = $rawEmail['normalized_text'] ?? null;
             $normalizedSubject = $this->normalizer->normalize($rawEmail['subject'] ?? '', false);
+            $normalizedHeaders = $this->normalizer->normalizeHeaders((string) ($rawEmail['raw_headers'] ?? ''));
         }
 
         // Kör alla regler samtidigt mot den inlästa texten (samma RuleEngine som
@@ -67,8 +69,8 @@ final class TemplatesController
         // brodtexten - se charOffsetFieldsByRuleId() som kanner till bada.
         $ruleMatches = [];
         if ($normalizedText !== null && $rules !== []) {
-            $engineResult = $this->ruleEngine->run($rules, $normalizedText, $normalizedSubject ?? '');
-            $ruleMatches = $this->charOffsetFieldsByRuleId($engineResult->fields, $rules, $normalizedText, $normalizedSubject ?? '');
+            $engineResult = $this->ruleEngine->run($rules, $normalizedText, $normalizedSubject ?? '', $normalizedHeaders ?? '');
+            $ruleMatches = $this->charOffsetFieldsByRuleId($engineResult->fields, $rules, $normalizedText, $normalizedSubject ?? '', $normalizedHeaders ?? '');
         }
 
         return $this->view->render($request, $response, 'templates/edit.twig', [
@@ -79,6 +81,7 @@ final class TemplatesController
             'selected_raw_email_id' => $selectedRawEmailId,
             'normalized_text' => $normalizedText,
             'normalized_subject' => $normalizedSubject,
+            'normalized_headers' => $normalizedHeaders,
             'rule_matches' => $ruleMatches,
         ]);
     }
@@ -95,7 +98,7 @@ final class TemplatesController
      * @param array<int,array{id:int,source?:string}> $rules
      * @return array<int,array{rule_id:int,matched:bool,value:?string,char_start:?int,char_end:?int}>
      */
-    private function charOffsetFieldsByRuleId(array $fields, array $rules, string $bodyText, string $subjectText): array
+    private function charOffsetFieldsByRuleId(array $fields, array $rules, string $bodyText, string $subjectText, string $headersText = ''): array
     {
         $sourceByRuleId = [];
         foreach ($rules as $rule) {
@@ -104,7 +107,11 @@ final class TemplatesController
 
         $byRuleId = [];
         foreach ($fields as $field) {
-            $text = ($sourceByRuleId[$field['rule_id']] ?? 'body') === 'subject' ? $subjectText : $bodyText;
+            $text = match ($sourceByRuleId[$field['rule_id']] ?? 'body') {
+                'subject' => $subjectText,
+                'headers' => $headersText,
+                default => $bodyText,
+            };
 
             $charStart = null;
             $charEnd = null;
@@ -252,7 +259,7 @@ final class TemplatesController
             return $this->json($response->withStatus(422), ['error' => 'Ogiltigt regex-mönster.']);
         }
 
-        $source = ($data['source'] ?? '') === 'subject' ? 'subject' : 'body';
+        $source = in_array($data['source'] ?? '', ['subject', 'headers'], true) ? $data['source'] : 'body';
 
         $ruleId = $this->rules->create(
             $templateId,
@@ -306,7 +313,7 @@ final class TemplatesController
             return $this->json($response->withStatus(422), ['error' => 'Ogiltigt regex-mönster.']);
         }
 
-        $source = ($data['source'] ?? '') === 'subject' ? 'subject' : 'body';
+        $source = in_array($data['source'] ?? '', ['subject', 'headers'], true) ? $data['source'] : 'body';
 
         $updated = $this->rules->update(
             $ruleId,
