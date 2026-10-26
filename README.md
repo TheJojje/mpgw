@@ -119,7 +119,7 @@ Snabbexempel - alla poster med alla fält i ett anrop:
 
 ```bash
 curl -H "X-API-Key: mpgw_xxx" \
-  "https://mp.larssons.space/api/v1/records?include=fields&per_page=200"
+  "https://mpgw.example.com/api/v1/records?include=fields&per_page=200"
 ```
 
 `bin/fetch-records.php` är en fristående exempelklient (bara cURL, ingen kod delad med applikationen):
@@ -131,8 +131,8 @@ php bin/fetch-records.php --key=mpgw_xxx --out=records.json --with-fields
 # CSV, filtrerat på status
 php bin/fetch-records.php --key=mpgw_xxx --out=records.csv --status=success --with-fields
 
-# mot en lokal dev-server
-php bin/fetch-records.php --key=mpgw_xxx --out=records.json --base-url=http://127.0.0.1:8811
+# mot din installation (adressen krävs; kan också sättas i env MPGW_BASE_URL)
+php bin/fetch-records.php --key=mpgw_xxx --out=records.json --base-url=https://mpgw.example.com
 ```
 
 Kör `php bin/fetch-records.php` utan argument för full flagg-lista.

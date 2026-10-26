@@ -19,10 +19,14 @@ declare(strict_types=1);
  *   bin/fetch-records.php --key=mpgw_xxx --out=records.json --status=success
  *   bin/fetch-records.php --key=mpgw_xxx --out=records.json --base-url=http://127.0.0.1:8811   # mot lokal dev-server
  *
+ * Mot en riktig installation:
+ *   bin/fetch-records.php --key=mpgw_xxx --out=records.json --base-url=https://mpgw.example.com
+ *
  * Flaggor:
  *   --key=...          API-nyckel (kravs). Kan ocksa anges via env MPGW_API_KEY.
  *   --out=...           Filsokvag att skriva till (kravs).
- *   --base-url=...      Bas-URL till API:t (default https://mp.larssons.space).
+ *   --base-url=...      Bas-URL till API:t, t.ex. https://mpgw.example.com (kravs).
+ *                        Kan ocksa anges via env MPGW_BASE_URL.
  *   --format=json|csv   Utdataformat (default json).
  *   --status=...         Filtrera pa status (success|partial|failed).
  *   --template-id=...    Filtrera pa mall-id.
@@ -192,7 +196,11 @@ if ($apiKey === null || $outPath === null) {
     exit(1);
 }
 
-$baseUrl = $args['base-url'] ?? 'https://mp.larssons.space';
+$baseUrl = $args['base-url'] ?? (getenv('MPGW_BASE_URL') ?: null);
+if ($baseUrl === null) {
+    fwrite(STDERR, "Ange API:ts adress med --base-url=https://din-mpgw-adress (eller env MPGW_BASE_URL).\n");
+    exit(1);
+}
 $format = $args['format'] ?? (str_ends_with(strtolower($outPath), '.csv') ? 'csv' : 'json');
 $perPage = isset($args['per-page']) ? max(1, min(200, (int) $args['per-page'])) : 200;
 $withFields = array_key_exists('with-fields', $args);

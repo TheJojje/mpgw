@@ -116,7 +116,7 @@ Retry-After: 60
 
 <section id="endpoints">
 <h2>Endpoints</h2>
-<p>Alla adresser ligger under <code>https://mp.larssons.space</code>. Sammanfattning:</p>
+<p>Alla adresser ligger under din mpgw-adress; i exemplen nedan skrivs den <code>https://mpgw.example.com</code>. Sammanfattning:</p>
 <table class="table">
     <thead><tr><th>Anrop</th><th>Scope</th><th>Beskrivning</th></tr></thead>
     <tbody>
@@ -132,7 +132,7 @@ Retry-After: 60
 
 <h3><code>GET /api/v1/health</code></h3>
 <p>Ingen autentisering krävs. Enkel drifttest.</p>
-<pre class="code-block">curl https://mp.larssons.space/api/v1/health
+<pre class="code-block">curl https://mpgw.example.com/api/v1/health
 
 {"data": {"status": "ok", "time": "2026-09-15T09:00:00+00:00"}}</pre>
 
@@ -170,7 +170,7 @@ Retry-After: 60
     </tbody>
 </table>
 <pre class="code-block">curl -H "X-API-Key: mpgw_xxx" \
-  "https://mp.larssons.space/api/v1/records?include=fields&amp;per_page=200"
+  "https://mpgw.example.com/api/v1/records?include=fields&amp;per_page=200"
 
 {
   "data": [
@@ -204,7 +204,7 @@ Retry-After: 60
 <h3><code>GET /api/v1/records/{uuid}</code></h3>
 <p>Kräver <code>records:read</code>. Samma fält som i listan plus alltid <code>fields</code>. 404 om uuid saknas eller tillhör en annan applikation.</p>
 <pre class="code-block">curl -H "X-API-Key: mpgw_xxx" \
-  https://mp.larssons.space/api/v1/records/7e7724d4-aeba-402f-a173-2d12d408ecf6
+  https://mpgw.example.com/api/v1/records/7e7724d4-aeba-402f-a173-2d12d408ecf6
 
 {"data": {"id": "7e7724d4-…", "template": "Avbokning", "status": "success", "fields": {"guest_name": "Anna Andersson"}}}</pre>
 
